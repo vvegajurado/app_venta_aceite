@@ -1311,6 +1311,44 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     echo json_encode([]);
                     exit();
                 }
+            case 'crear_cliente_ajax':
+                header('Content-Type: application/json');
+                try {
+                    $nombre_cliente = $_POST['nombre_cliente'] ?? '';
+                    if (empty($nombre_cliente)) {
+                        throw new Exception("El nombre del cliente es obligatorio.");
+                    }
+
+                    $stmt = $pdo->prepare("
+                        INSERT INTO clientes (nombre_cliente, nif, direccion, ciudad, provincia, codigo_postal, telefono, email, observaciones)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ");
+                    $stmt->execute([
+                        $nombre_cliente,
+                        $_POST['nif'] ?? null,
+                        $_POST['direccion'] ?? null,
+                        $_POST['ciudad'] ?? null,
+                        $_POST['provincia'] ?? null,
+                        $_POST['codigo_postal'] ?? null,
+                        $_POST['telefono'] ?? null,
+                        $_POST['email'] ?? null,
+                        $_POST['observaciones'] ?? null
+                    ]);
+                    $new_client_id = $pdo->lastInsertId();
+
+                    // Devolver los datos del nuevo cliente
+                    echo json_encode([
+                        'success' => true,
+                        'id_cliente' => $new_client_id,
+                        'nombre_cliente' => $nombre_cliente
+                    ]);
+
+                } catch (Exception $e) {
+                    http_response_code(400); // Bad Request
+                    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+                }
+                exit();
+                break;
 
                 $like_param = '%' . $search_term . '%';
                 try {
@@ -2284,7 +2322,6 @@ if ($view == 'list') {
                             </div>
                         </div>
                     </div>
-
 
                 <?php elseif ($view == 'details' && $factura_actual): ?>
                     <div class="card mb-4">
