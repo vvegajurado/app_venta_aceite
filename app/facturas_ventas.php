@@ -842,7 +842,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             case 'agregar_factura':
                 $fecha_factura = $_POST['fecha_factura'];
                 $id_cliente = $_POST['id_cliente'];
-                $id_direccion_envio = empty($_POST['id_direccion_envio']) ? null : (int)$_POST['id_direccion_envio']; // NEW: Get shipping address ID
+                $id_direccion_envio = null;
+                if (!empty($_POST['id_direccion_envio'])) {
+                    $id_direccion_envio = (int)$_POST['id_direccion_envio'];
+                } else if (!empty($id_cliente)) {
+                    // Si no se proporciona una dirección de envío, buscar la principal del cliente.
+                    $stmt_main_addr = $pdo->prepare("SELECT id_direccion_envio FROM direcciones_envio WHERE id_cliente = ? AND es_principal = 1 LIMIT 1");
+                    $stmt_main_addr->execute([$id_cliente]);
+                    $main_address = $stmt_main_addr->fetch(PDO::FETCH_ASSOC);
+                    if ($main_address) {
+                        $id_direccion_envio = $main_address['id_direccion_envio'];
+                    }
+                }
                 // Nuevos campos para el descuento global y recargo global en la creación de factura (por defecto 0.00)
                 $descuento_global = (float)($_POST['descuento_global'] ?? 0.00);
                 $recargo_global = (float)($_POST['recargo_global'] ?? 0.00);
@@ -2222,12 +2233,12 @@ if ($view == 'list') {
                                     <p><strong>Teléfono:</strong> <?php echo htmlspecialchars($factura_actual['telefono'] ?? 'N/A'); ?></p>
                                     <p><strong>Email:</strong> <?php echo htmlspecialchars($factura_actual['email'] ?? 'N/A'); ?></p>
                                 </div>
-                                <div class="col-md-3 invoice-header-financials">
+                                <div class="col-md-3 invoice-header-financials text-end">
                                     <!-- Formulario para Descuento Global -->
                                     <form id="updateDiscountForm" action="facturas_ventas.php" method="POST" class="mb-2">
                                         <input type="hidden" name="accion" value="update_global_discount">
                                         <input type="hidden" name="id_factura" value="<?php echo htmlspecialchars($factura_actual['id_factura']); ?>">
-                                        <div class="d-flex justify-content-start align-items-center">
+                                        <div class="d-flex justify-content-end align-items-center">
                                             <label for="descuento_global_edit" class="form-label mb-0 me-2"><strong>Descuento Global:</strong></label>
                                             <input type="number" class="form-control w-auto text-end me-2" id="descuento_global_edit" name="descuento_global" step="0.01" min="0" value="<?php echo number_format($factura_actual['descuento_global_aplicado'], 2, '.', ''); ?>">
                                             <button type="submit" class="btn btn-sm btn-outline-primary" title="Actualizar Descuento">
@@ -2239,7 +2250,7 @@ if ($view == 'list') {
                                     <form id="updateSurchargeForm" action="facturas_ventas.php" method="POST" class="mb-2">
                                         <input type="hidden" name="accion" value="update_global_surcharge">
                                         <input type="hidden" name="id_factura" value="<?php echo htmlspecialchars($factura_actual['id_factura']); ?>">
-                                        <div class="d-flex justify-content-start align-items-center">
+                                        <div class="d-flex justify-content-end align-items-center">
                                             <label for="recargo_global_edit" class="form-label mb-0 me-2"><strong>Recargo Global:</strong></label>
                                             <input type="number" class="form-control w-auto text-end me-2" id="recargo_global_edit" name="recargo_global" step="0.01" min="0" value="<?php echo number_format($factura_actual['recargo_global_aplicado'], 2, '.', ''); ?>">
                                             <button type="submit" class="btn btn-sm btn-outline-primary" title="Actualizar Recargo">
@@ -2250,7 +2261,7 @@ if ($view == 'list') {
                                     <p><strong>Base Imponible Total:</strong> <span class="fs-5 text-dark"><?php echo number_format($factura_actual['total_factura'], 2, ',', '.'); ?> €</span></p>
                                     <p><strong>Total IVA:</strong> <span class="fs-5 text-dark"><?php echo number_format($factura_actual['total_iva_factura'], 2, ',', '.'); ?> €</span></p>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-3 text-end">
                                     <p><strong>Total Factura (IVA Inc.):</strong> <span class="fs-4 text-primary"><?php echo number_format($factura_actual['total_factura_iva_incluido'], 2, ',', '.'); ?> €</span></p>
                                     <p><strong>Saldo Pendiente:</strong> <span class="fs-5 <?php echo ($saldo_pendiente > 0) ? 'text-danger' : 'text-success'; ?>"><?php echo number_format($saldo_pendiente, 2, ',', '.'); ?> €</span></p>
                                     <p><strong>Estado Pago:</strong> <span class="badge <?php echo htmlspecialchars($badge_class); ?> fs-6"><?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $factura_actual['estado_pago']))); ?></span></p>
@@ -2879,7 +2890,9 @@ if ($view == 'list') {
                                 clientSelectionError.style.display = 'none'; // Hide error message
                             }
 
-                            // Validate shipping address selection if the group is visible AND there are addresses available
+                            // VALIDACIÓN DE DIRECCIÓN DE ENVÍO ELIMINADA SEGÚN REQUISITO
+                            // Ahora, si no se selecciona una dirección, el backend buscará la principal por defecto.
+                            /*
                             if (shippingAddressGroup.style.display === 'block') {
                                 // Only validate if there are actual options to select (i.e., not "No hay direcciones...")
                                 if (!idDireccionEnvioSelectedInput.value && noShippingAddressesInfo.style.display !== 'block') {
@@ -2890,6 +2903,7 @@ if ($view == 'list') {
                                     shippingAddressError.style.display = 'none';
                                 }
                             }
+                            */
 
                             if (!isValid) {
                                 event.preventDefault(); // Ensure form is not submitted if any validation fails
