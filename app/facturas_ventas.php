@@ -1338,11 +1338,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         throw new Exception("El nombre del cliente es obligatorio.");
                     }
 
+                    // Obtener el último id_cliente y sumarle 1
+                    $stmt_last_id = $pdo->query("SELECT MAX(id_cliente) AS max_id FROM clientes");
+                    $last_id_row = $stmt_last_id->fetch(PDO::FETCH_ASSOC);
+                    $new_client_id = ($last_id_row['max_id'] ?? 0) + 1;
+
                     $stmt = $pdo->prepare("
-                        INSERT INTO clientes (nombre_cliente, nif, direccion, ciudad, provincia, codigo_postal, telefono, email, observaciones)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO clientes (id_cliente, nombre_cliente, nif, direccion, ciudad, provincia, codigo_postal, telefono, email, observaciones)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ");
                     $stmt->execute([
+                        $new_client_id,
                         $nombre_cliente,
                         $_POST['nif'] ?? null,
                         $_POST['direccion'] ?? null,
@@ -1353,7 +1359,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         $_POST['email'] ?? null,
                         $_POST['observaciones'] ?? null
                     ]);
-                    $new_client_id = $pdo->lastInsertId();
 
                     // Devolver los datos del nuevo cliente
                     echo json_encode([
