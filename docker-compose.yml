@@ -1,0 +1,48 @@
+# my_app_docker/docker-compose.yml
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: ./apache
+    ports:
+      - "85:80"
+    volumes:
+      - ./app:/var/www/html/
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  db:
+    image: mariadb:10.4
+    environment:
+      MYSQL_ROOT_PASSWORD: Vicen050270
+      MYSQL_DATABASE: ventasaceite
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: Vicen050270
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+
+  # Nuevo servicio para phpMyAdmin
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    links:
+      - db:db
+    environment:
+      # El host de la base de datos es el nombre del servicio de la base de datos
+      PMA_HOST: db
+      # El puerto de la base de datos
+      PMA_PORT: 3306
+    restart: always
+    ports:
+      # Mapea el puerto 80 del contenedor a tu puerto local 8082
+      - "8082:80"
+    depends_on:
+      - db
+
+volumes:
+  db_data:

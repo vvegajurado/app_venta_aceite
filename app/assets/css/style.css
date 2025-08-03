@@ -1,0 +1,267 @@
+/* assets/css/style.css */
+
+:root {
+    --primary-color: #007bff; /* Azul Bootstrap */
+    --secondary-color: #6c757d; /* Gris Bootstrap */
+    --success-color: #28a745; /* Verde Bootstrap */
+    --danger-color: #dc3545; /* Rojo Bootstrap */
+    --warning-color: #ffc107; /* Amarillo Bootstrap */
+    --info-color: #17a2b8; /* Cian Bootstrap */
+    --light-color: #f8f9fa; /* Gris claro Bootstrap */
+    --dark-color: #343a40; /* Gris oscuro Bootstrap */
+
+    --sidebar-bg: #2c3e50; /* Azul oscuro para la barra lateral */
+    --sidebar-link: #ecf0f1; /* Gris claro para los enlaces */
+    --sidebar-hover: #34495e; /* Un poco más oscuro para el hover */
+    --sidebar-active: #0056b3; /* Azul más oscuro para el activo */
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f4f7f6;
+    color: #333;
+    margin: 0;
+    padding: 0;
+    display: flex; /* Usar flexbox para el layout principal */
+    min-height: 100vh;
+}
+
+.wrapper {
+    display: flex;
+    width: 100%;
+}
+
+/* Estilos para la barra lateral (sidebar.php) */
+.sidebar {
+    width: 250px; /* Ancho fijo de la barra lateral */
+    background-color: var(--sidebar-bg);
+    color: var(--sidebar-link);
+    padding-top: 20px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+}
+
+.sidebar-header {
+    text-align: center;
+    padding: 10px 0;
+    margin-bottom: 20px;
+}
+
+.sidebar-header h3 {
+    color: white;
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.sidebar-menu-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    flex-grow: 1; /* Permite que la lista crezca y empuje el logout al final */
+}
+
+.sidebar-menu-item {
+    margin-bottom: 5px;
+}
+
+.sidebar-menu-link {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    color: var(--sidebar-link);
+    text-decoration: none;
+    border-left: 5px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.sidebar-menu-link i {
+    font-size: 1.2rem;
+    margin-right: 10px;
+}
+
+.sidebar-menu-link:hover,
+.sidebar-menu-link.active {
+    background-color: var(--sidebar-hover);
+    color: white;
+    border-left-color: var(--primary-color);
+}
+
+/* Ajuste del icono de flecha del colapsable */
+.sidebar-menu-link .sidebar-collapse-icon {
+    transition: transform 0.3s ease;
+}
+.sidebar-menu-link[aria-expanded="true"] .sidebar-collapse-icon {
+    transform: rotate(180deg);
+}
+
+/* Estilo para empujar el elemento de cerrar sesión al final */
+.sidebar-menu-item.mt-auto {
+    margin-top: auto !important; /* Empuja este elemento al final de la flexbox */
+    border-top: 1px solid rgba(255, 255, 255, 0.1); /* Separador visual */
+    padding-top: 10px;
+}
+
+/* Submenú */
+.sidebar-submenu-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.sidebar-submenu-item {
+    list-style: none;
+}
+
+.sidebar-submenu-link {
+    display: block;
+    padding: 8px 15px 8px 45px; /* Indentación para submenú */
+    color: var(--sidebar-link);
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.sidebar-submenu-link:hover,
+.sidebar-submenu-link.active {
+    background-color: var(--sidebar-hover);
+    color: white;
+}
+
+/* Estilos para el contenido principal */
+.content {
+    flex-grow: 1;
+    padding: 20px;
+    background-color: #fff;
+    margin: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+/* Estilos generales para cards, tablas, etc. */
+.card {
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+    font-weight: bold;
+    color: #2c3e50;
+    padding: 15px 20px;
+}
+.card-body {
+    padding: 20px;
+}
+
+.table {
+    margin-top: 20px;
+}
+.table thead th {
+    background-color: #e9ecef;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+    padding: 12px;
+}
+.table tbody td {
+    padding: 10px;
+    vertical-align: middle;
+}
+.table tbody tr:hover {
+    background-color: #f2f2f2;
+}
+
+.btn {
+    border-radius: 5px;
+    padding: 8px 15px;
+    font-size: 0.95rem;
+}
+.btn i {
+    margin-right: 5px;
+}
+
+.alert {
+    margin-top: 20px;
+    border-radius: 5px;
+}
+
+/* Estilos específicos para el mapa */
+#map {
+    height: 400px;
+    width: 100%;
+    border-radius: 8px;
+    margin-top: 20px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+.info-window-content {
+    font-family: 'Inter', sans-serif;
+    padding: 5px;
+}
+.info-window-content h6 {
+    margin-bottom: 5px;
+    color: #2c3e50;
+}
+.info-window-content p {
+    margin-bottom: 3px;
+    font-size: 0.9em;
+}
+.info-window-content a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+.info-window-content a:hover {
+    text-decoration: underline;
+}
+
+/* Estilos para formularios */
+.form-label {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+.form-control, .form-select {
+    border-radius: 5px;
+    padding: 8px 12px;
+}
+.pedidos-list {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #e9ecef;
+    padding: 15px;
+    border-radius: 8px;
+    background-color: #fdfdfd;
+}
+.form-check {
+    margin-bottom: 8px;
+}
+.form-check-input {
+    margin-top: 0.3em;
+}
+.form-check-label {
+    cursor: pointer;
+    font-size: 0.95rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .wrapper {
+        flex-direction: column;
+    }
+    .sidebar {
+        width: 100%;
+        height: auto;
+        padding-top: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .content {
+        margin: 10px;
+        padding: 15px;
+    }
+    .sidebar-menu-link {
+        padding: 8px 10px;
+    }
+    .sidebar-submenu-link {
+        padding: 6px 10px 6px 35px;
+    }
+}
+
