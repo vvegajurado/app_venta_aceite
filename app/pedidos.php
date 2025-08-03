@@ -1973,7 +1973,7 @@ $new_invoice_client_name = $_GET['new_invoice_client_name'] ?? '';
         // NEW FUNCTION: Redirect to clientes.php to create a new client from the order modal
         function createNewClientFromOrderModal() {
             const clientName = document.getElementById('client_search_input').value.trim();
-            let url = 'clientes.php?action=new';
+            let url = 'clientes.php?action=new&source=pedidos'; // AÑADIDO: source=pedidos
             if (clientName) {
                 url += '&new_client_name=' + encodeURIComponent(clientName);
             }

@@ -274,7 +274,7 @@ if ($is_ajax_request) {
 }
 
 // --- Lógica para procesar el formulario de añadir/editar cliente (NO AJAX) ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'save_cliente') {
     $id_cliente_form = $_POST['id_cliente'] ?? null;
     $nombre_cliente = trim($_POST['nombre_cliente'] ?? '');
     $direccion = trim($_POST['direccion'] ?? '');
@@ -288,6 +288,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $longitud = filter_var($_POST['longitud'] ?? '', FILTER_VALIDATE_FLOAT) !== false ? (float)$_POST['longitud'] : null;
     $direccion_google_maps = trim($_POST['direccion_google_maps'] ?? '');
     $observaciones = trim($_POST['observaciones'] ?? '');
+    $source = $_POST['source'] ?? ''; // Capturar el parámetro source
 
     $nif_db = empty($nif) ? null : $nif;
 
@@ -302,13 +303,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$nombre_cliente, $direccion, $ciudad, $provincia, $codigo_postal, $telefono, $email, $nif_db, $latitud, $longitud, $direccion_google_maps, $observaciones, $id_cliente_form]);
                 $mensaje = "Cliente actualizado correctamente.";
                 $tipo_mensaje = 'success';
+                $last_id = $id_cliente_form;
             } else {
                 // Modo AGREGAR
                 $stmt = $pdo->prepare("INSERT INTO clientes (nombre_cliente, direccion, ciudad, provincia, codigo_postal, telefono, email, nif, latitud, longitud, direccion_google_maps, observaciones) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                 $stmt->execute([$nombre_cliente, $direccion, $ciudad, $provincia, $codigo_postal, $telefono, $email, $nif_db, $latitud, $longitud, $direccion_google_maps, $observaciones]);
+                $last_id = $pdo->lastInsertId();
                 $mensaje = "Cliente agregado correctamente.";
                 $tipo_mensaje = 'success';
             }
+
+            // Si el cliente se creó desde la página de pedidos, redirigir de vuelta
+            if ($source === 'pedidos') {
+                $redirect_url = "pedidos.php?new_invoice_client_id=" . urlencode($last_id) . "&new_invoice_client_name=" . urlencode($nombre_cliente) . "&open_modal=true";
+                header("Location: " . $redirect_url);
+                exit();
+            }
+
         } catch (PDOException $e) {
             $mensaje = "Error de base de datos: " . $e->getMessage();
             $tipo_mensaje = 'danger';
@@ -771,6 +782,7 @@ try {
                     <form action="clientes.php" method="POST">
                         <input type="hidden" name="action" value="save_cliente">
                         <input type="hidden" id="id_cliente_form" name="id_cliente" value="<?php echo htmlspecialchars($cliente_a_editar['id_cliente'] ?? ''); ?>">
+                        <input type="hidden" name="source" value="<?php echo htmlspecialchars($_GET['source'] ?? ''); ?>">
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label for="nombre_cliente" class="form-label">Nombre Cliente <span class="text-danger">*</span></label>
