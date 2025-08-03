@@ -1303,7 +1303,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 break;
 
             case 'search_clients':
-                
                 header('Content-Type: application/json');
                 $search_term = $_POST['search_term'] ?? '';
 
@@ -1311,44 +1310,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     echo json_encode([]);
                     exit();
                 }
-            case 'crear_cliente_ajax':
-                header('Content-Type: application/json');
-                try {
-                    $nombre_cliente = $_POST['nombre_cliente'] ?? '';
-                    if (empty($nombre_cliente)) {
-                        throw new Exception("El nombre del cliente es obligatorio.");
-                    }
-
-                    $stmt = $pdo->prepare("
-                        INSERT INTO clientes (nombre_cliente, nif, direccion, ciudad, provincia, codigo_postal, telefono, email, observaciones)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ");
-                    $stmt->execute([
-                        $nombre_cliente,
-                        $_POST['nif'] ?? null,
-                        $_POST['direccion'] ?? null,
-                        $_POST['ciudad'] ?? null,
-                        $_POST['provincia'] ?? null,
-                        $_POST['codigo_postal'] ?? null,
-                        $_POST['telefono'] ?? null,
-                        $_POST['email'] ?? null,
-                        $_POST['observaciones'] ?? null
-                    ]);
-                    $new_client_id = $pdo->lastInsertId();
-
-                    // Devolver los datos del nuevo cliente
-                    echo json_encode([
-                        'success' => true,
-                        'id_cliente' => $new_client_id,
-                        'nombre_cliente' => $nombre_cliente
-                    ]);
-
-                } catch (Exception $e) {
-                    http_response_code(400); // Bad Request
-                    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
-                }
-                exit();
-                break;
 
                 $like_param = '%' . $search_term . '%';
                 try {
@@ -1369,12 +1330,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 exit();
                 break;
 
-            // NEW: Action for getting shipping addresses of a client
-            case 'get_shipping_addresses':
-            case 'search_shipping_addresses': // Explicit action for search
-                
-                header('Content-Type: application/json');
-                $id_cliente = $_POST['id_cliente'] ?? null;
             case 'crear_cliente_ajax':
                 header('Content-Type: application/json');
                 try {
@@ -1413,6 +1368,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 }
                 exit();
                 break;
+
+            // NEW: Action for getting shipping addresses of a client
+            case 'get_shipping_addresses':
+            case 'search_shipping_addresses': // Explicit action for search
+                header('Content-Type: application/json');
+                $id_cliente = $_POST['id_cliente'] ?? null;
                 $search_term = $_POST['search_term'] ?? ''; // New search term parameter
 
                 if (!$id_cliente) {
@@ -3261,11 +3222,17 @@ if ($view == 'list') {
 
                                 idDetalleActividadSeleccionadoSelect.addEventListener('change', function() {
                                     const selectedOption = this.options[this.selectedIndex];
-                                    const unidadesDisponiblesEnLote = parseInt(selectedOption.dataset.disponible) || 0;
-                                    const unidadesPendientes = parseInt(unidadesPendientesDisplay.textContent) || 0;
+                                    if (selectedOption && selectedOption.value) {
+                                        const unidadesDisponiblesEnLote = parseInt(selectedOption.dataset.disponible) || 0;
+                                        const unidadesPendientes = parseInt(unidadesPendientesDisplay.textContent) || 0;
 
-                                    // Ajustar la cantidad a retirar al mínimo entre lo pendiente y lo disponible en el lote
-                                    unidadesARetirarInput.value = Math.min(unidadesPendientes, unidadesDisponiblesEnLote);
+                                        // Ajustar la cantidad a retirar al mínimo entre lo pendiente y lo disponible en el lote
+                                        unidadesARetirarInput.value = Math.min(unidadesPendientes, unidadesDisponiblesEnLote);
+                                    } else {
+                                        // Si se selecciona la opción "Seleccione un lote", se resetea el valor.
+                                        const unidadesPendientes = parseInt(unidadesPendientesDisplay.textContent) || 0;
+                                        unidadesARetirarInput.value = unidadesPendientes;
+                                    }
                                 });
 
                                 idDetalleActividadSeleccionadoSelect.removeAttribute('disabled');
