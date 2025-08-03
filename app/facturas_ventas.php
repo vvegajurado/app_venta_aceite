@@ -3012,8 +3012,10 @@ if ($view == 'list') {
                             let isValid = true;
 
                             // Validate client selection
-                            if (!idClienteSelectedInput.value) {
+                            const selectedClientId = idClienteSelectedInput.value;
+                            if (!selectedClientId || parseInt(selectedClientId, 10) <= 0) {
                                 event.preventDefault(); // Prevent form submission
+                                clientSelectionError.textContent = 'Cliente no válido. Por favor, seleccione un cliente de la lista.';
                                 clientSelectionError.style.display = 'block'; // Show error message
                                 isValid = false;
                             } else {
