@@ -1346,8 +1346,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     }
 
                     $stmt = $pdo->prepare("
-                        INSERT INTO clientes (nombre_cliente, nif, direccion, ciudad, provincia, codigo_postal, telefono, email, persona_contacto, observaciones)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO clientes (nombre_cliente, nif, direccion, ciudad, provincia, codigo_postal, telefono, email, observaciones)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ");
                     $stmt->execute([
                         $nombre_cliente,
@@ -1358,7 +1358,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         $_POST['codigo_postal'] ?? null,
                         $_POST['telefono'] ?? null,
                         $_POST['email'] ?? null,
-                        $_POST['persona_contacto'] ?? null,
                         $_POST['observaciones'] ?? null
                     ]);
                     $new_client_id = $pdo->lastInsertId();
@@ -2271,10 +2270,6 @@ if ($view == 'list') {
                                                 <label for="email_modal" class="form-label">Email</label>
                                                 <input type="email" class="form-control" id="email_modal" name="email">
                                             </div>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label for="persona_contacto_modal" class="form-label">Persona de Contacto</label>
-                                            <input type="text" class="form-control" id="persona_contacto_modal" name="persona_contacto">
                                         </div>
                                         <div class="mb-3">
                                             <label for="observaciones_modal" class="form-label">Observaciones</label>
