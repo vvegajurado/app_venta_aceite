@@ -3121,9 +3121,21 @@ if ($view == 'list') {
                                 batches.forEach(batch => {
                                     const option = document.createElement('option');
                                     option.value = batch.id_detalle_actividad;
-                                    option.textContent = `Lote: ${batch.nombre_lote} - Sublote: ${batch.consecutivo_sublote} (Disp: ${batch.unidades_envasadas - batch.unidades_vendidas} uds)`;
+                                    const unidadesDisponibles = batch.unidades_envasadas - batch.unidades_vendidas;
+                                    option.textContent = `Lote: ${batch.nombre_lote} - Sublote: ${batch.consecutivo_sublote} (Disp: ${unidadesDisponibles} uds)`;
+                                    option.dataset.disponible = unidadesDisponibles; // Guardar unidades disponibles en el option
                                     idDetalleActividadSeleccionadoSelect.appendChild(option);
                                 });
+
+                                idDetalleActividadSeleccionadoSelect.addEventListener('change', function() {
+                                    const selectedOption = this.options[this.selectedIndex];
+                                    const unidadesDisponiblesEnLote = parseInt(selectedOption.dataset.disponible) || 0;
+                                    const unidadesPendientes = parseInt(unidadesPendientesDisplay.textContent) || 0;
+
+                                    // Ajustar la cantidad a retirar al mínimo entre lo pendiente y lo disponible en el lote
+                                    unidadesARetirarInput.value = Math.min(unidadesPendientes, unidadesDisponiblesEnLote);
+                                });
+
                                 idDetalleActividadSeleccionadoSelect.removeAttribute('disabled');
                             } else {
                                 const option = document.createElement('option');
