@@ -1337,6 +1337,45 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 
                 header('Content-Type: application/json');
                 $id_cliente = $_POST['id_cliente'] ?? null;
+            case 'crear_cliente_ajax':
+                header('Content-Type: application/json');
+                try {
+                    $nombre_cliente = $_POST['nombre_cliente'] ?? '';
+                    if (empty($nombre_cliente)) {
+                        throw new Exception("El nombre del cliente es obligatorio.");
+                    }
+
+                    $stmt = $pdo->prepare("
+                        INSERT INTO clientes (nombre_cliente, nif, direccion, ciudad, provincia, codigo_postal, telefono, email, persona_contacto, observaciones)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ");
+                    $stmt->execute([
+                        $nombre_cliente,
+                        $_POST['nif'] ?? null,
+                        $_POST['direccion'] ?? null,
+                        $_POST['ciudad'] ?? null,
+                        $_POST['provincia'] ?? null,
+                        $_POST['codigo_postal'] ?? null,
+                        $_POST['telefono'] ?? null,
+                        $_POST['email'] ?? null,
+                        $_POST['persona_contacto'] ?? null,
+                        $_POST['observaciones'] ?? null
+                    ]);
+                    $new_client_id = $pdo->lastInsertId();
+
+                    // Devolver los datos del nuevo cliente
+                    echo json_encode([
+                        'success' => true,
+                        'id_cliente' => $new_client_id,
+                        'nombre_cliente' => $nombre_cliente
+                    ]);
+
+                } catch (Exception $e) {
+                    http_response_code(400); // Bad Request
+                    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+                }
+                exit();
+                break;
                 $search_term = $_POST['search_term'] ?? ''; // New search term parameter
 
                 if (!$id_cliente) {
@@ -2148,7 +2187,7 @@ if ($view == 'list') {
                                             </div>
                                             <small class="text-danger" id="client_selection_error" style="display:none;">Por favor, seleccione un cliente de la lista.</small>
                                             <div class="mt-2">
-                                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="createNewClientFromInvoiceModal()">
+                                                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#addClientModal">
                                                     <i class="bi bi-person-plus"></i> Crear Nuevo Cliente
                                                 </button>
                                             </div>
@@ -2182,6 +2221,75 @@ if ($view == 'list') {
                             </div>
                         </div>
                     </div>
+
+                    <!-- Modal para Añadir Nuevo Cliente -->
+                    <div class="modal fade" id="addClientModal" tabindex="-1" aria-labelledby="addClientModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <form id="addClientForm">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="addClientModalLabel">Crear Nuevo Cliente</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div id="addClientError" class="alert alert-danger" style="display:none;"></div>
+                                        <input type="hidden" name="accion" value="crear_cliente_ajax">
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label for="nombre_cliente_modal" class="form-label">Nombre del Cliente <span class="text-danger">*</span></label>
+                                                <input type="text" class="form-control" id="nombre_cliente_modal" name="nombre_cliente" required>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label for="nif_modal" class="form-label">NIF</label>
+                                                <input type="text" class="form-control" id="nif_modal" name="nif">
+                                            </div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="direccion_modal" class="form-label">Dirección</label>
+                                            <input type="text" class="form-control" id="direccion_modal" name="direccion">
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label for="ciudad_modal" class="form-label">Ciudad</label>
+                                                <input type="text" class="form-control" id="ciudad_modal" name="ciudad">
+                                            </div>
+                                            <div class="col-md-4 mb-3">
+                                                <label for="provincia_modal" class="form-label">Provincia</label>
+                                                <input type="text" class="form-control" id="provincia_modal" name="provincia">
+                                            </div>
+                                            <div class="col-md-2 mb-3">
+                                                <label for="codigo_postal_modal" class="form-label">Código Postal</label>
+                                                <input type="text" class="form-control" id="codigo_postal_modal" name="codigo_postal">
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label for="telefono_modal" class="form-label">Teléfono</label>
+                                                <input type="tel" class="form-control" id="telefono_modal" name="telefono">
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label for="email_modal" class="form-label">Email</label>
+                                                <input type="email" class="form-control" id="email_modal" name="email">
+                                            </div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="persona_contacto_modal" class="form-label">Persona de Contacto</label>
+                                            <input type="text" class="form-control" id="persona_contacto_modal" name="persona_contacto">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="observaciones_modal" class="form-label">Observaciones</label>
+                                            <textarea class="form-control" id="observaciones_modal" name="observaciones" rows="3"></textarea>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                        <button type="submit" class="btn btn-primary">Crear Cliente</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
 
                 <?php elseif ($view == 'details' && $factura_actual): ?>
                     <div class="card mb-4">
@@ -2725,16 +2833,6 @@ if ($view == 'list') {
             totalLineaIvaIncDisplay.textContent = totalLineaIvaInc.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
         }
 
-        // Función para redirigir a clientes.php para crear un nuevo cliente
-        function createNewClientFromInvoiceModal() {
-            const clientName = document.getElementById('client_search_input').value.trim();
-            let url = 'clientes.php?action=new';
-            if (clientName) {
-                url += '&new_client_name=' + encodeURIComponent(clientName);
-            }
-            window.location.href = url;
-        }
-
         // Wrap the entire script in an IIFE to prevent global variable conflicts
         (function() {
             let clientSearchTimeout; // Moved inside IIFE
@@ -3237,6 +3335,49 @@ if ($view == 'list') {
 
                 // Trigger "Mostrar Todos" on initial load to ensure all are visible and button is active
                 document.querySelector('.filter-btn[data-filter-type="all"]').click();
+
+
+                // --- Add Client Modal Logic ---
+                const addClientForm = document.getElementById('addClientForm');
+                const addClientModalEl = document.getElementById('addClientModal');
+                const addClientModal = new bootstrap.Modal(addClientModalEl);
+                const addClientErrorDiv = document.getElementById('addClientError');
+
+                if (addClientForm) {
+                    addClientForm.addEventListener('submit', async function(event) {
+                        event.preventDefault();
+                        addClientErrorDiv.style.display = 'none';
+                        addClientErrorDiv.textContent = '';
+
+                        try {
+                            const formData = new FormData(addClientForm);
+                            const response = await fetch('facturas_ventas.php', {
+                                method: 'POST',
+                                body: formData
+                            });
+
+                            const result = await response.json();
+
+                            if (response.ok && result.success) {
+                                // Success! Close modal and update the invoice form
+                                addClientModal.hide();
+                                document.getElementById('client_search_input').value = result.nombre_cliente;
+                                document.getElementById('id_cliente_selected').value = result.id_cliente;
+                                // Automatically load shipping addresses for the new client
+                                loadShippingAddresses(result.id_cliente, shippingAddressSearchInput, idDireccionEnvioSelectedInput, shippingAddressSearchResultsDiv, shippingAddressGroup, shippingAddressError, noShippingAddressesInfo);
+                                // Clear the form for the next time
+                                addClientForm.reset();
+                            } else {
+                                // Show error message inside the modal
+                                addClientErrorDiv.textContent = result.message || 'Ocurrió un error desconocido.';
+                                addClientErrorDiv.style.display = 'block';
+                            }
+                        } catch (error) {
+                            addClientErrorDiv.textContent = 'Error de conexión. Por favor, inténtelo de nuevo.';
+                            addClientErrorDiv.style.display = 'block';
+                        }
+                    });
+                }
 
             });
         })(); // End of IIFE
