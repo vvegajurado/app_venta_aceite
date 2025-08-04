@@ -3385,6 +3385,8 @@ if ($view == 'list') {
                                 loadShippingAddresses(result.id_cliente, shippingAddressSearchInput, idDireccionEnvioSelectedInput, shippingAddressSearchResultsDiv, shippingAddressGroup, shippingAddressError, noShippingAddressesInfo);
                                 // Clear the form for the next time
                                 addClientForm.reset();
+                                // Set focus to the client search input
+                                if(clientSearchInput) clientSearchInput.focus();
                             } else {
                                 // Show error message inside the modal
                                 addClientErrorDiv.textContent = result.message || 'Ocurrió un error desconocido.';
