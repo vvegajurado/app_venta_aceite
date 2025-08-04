@@ -1367,6 +1367,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         'nombre_cliente' => $nombre_cliente
                     ]);
 
+                    if ($in_transaction) $pdo->commit();
                 } catch (Exception $e) {
                     http_response_code(400); // Bad Request
                     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
@@ -2218,7 +2219,7 @@ if ($view == 'list') {
                                     </div>
                                     <div class="modal-footer">
                                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                                        <button type="submit" class="btn btn-primary" id="submitNewInvoiceBtn">Crear Factura</button>
+                                        <button type="submit" class="btn btn-primary" id="submitNewInvoiceBtn" disabled>Crear Factura</button>
                                     </div>
                                 </form>
                             </div>
@@ -2947,6 +2948,10 @@ if ($view == 'list') {
                                                 clientSearchInput.value = this.dataset.clientName;
                                                 idClienteSelectedInput.value = this.dataset.clientId;
                                                 clientSearchResultsDiv.innerHTML = ''; // Clear results
+
+                                                // Enable the submit button
+                                                if(submitNewInvoiceBtn) submitNewInvoiceBtn.disabled = false;
+
                                                 // NEW: Load shipping addresses after client is selected
                                                 loadShippingAddresses(this.dataset.clientId, shippingAddressSearchInput, idDireccionEnvioSelectedInput, shippingAddressSearchResultsDiv, shippingAddressGroup, shippingAddressError, noShippingAddressesInfo);
                                             });
@@ -3348,6 +3353,7 @@ if ($view == 'list') {
                 const addClientModalEl = document.getElementById('addClientModal');
                 const addClientModal = new bootstrap.Modal(addClientModalEl);
                 const addClientErrorDiv = document.getElementById('addClientError');
+                const submitNewInvoiceBtn = document.getElementById('submitNewInvoiceBtn');
 
                 if (addClientForm) {
                     addClientForm.addEventListener('submit', async function(event) {
@@ -3367,8 +3373,14 @@ if ($view == 'list') {
                             if (response.ok && result.success) {
                                 // Success! Close modal and update the invoice form
                                 addClientModal.hide();
-                                document.getElementById('client_search_input').value = result.nombre_cliente;
-                                document.getElementById('id_cliente_selected').value = result.id_cliente;
+                                const clientSearchInput = document.getElementById('client_search_input');
+                                const idClienteSelectedInput = document.getElementById('id_cliente_selected');
+                                if(clientSearchInput) clientSearchInput.value = result.nombre_cliente;
+                                if(idClienteSelectedInput) idClienteSelectedInput.value = result.id_cliente;
+
+                                // Enable the submit button
+                                if(submitNewInvoiceBtn) submitNewInvoiceBtn.disabled = false;
+
                                 // Automatically load shipping addresses for the new client
                                 loadShippingAddresses(result.id_cliente, shippingAddressSearchInput, idDireccionEnvioSelectedInput, shippingAddressSearchResultsDiv, shippingAddressGroup, shippingAddressError, noShippingAddressesInfo);
                                 // Clear the form for the next time
