@@ -3386,7 +3386,11 @@ if ($view == 'list') {
                                 // Clear the form for the next time
                                 addClientForm.reset();
                                 // Set focus to the client search input
-                                if(clientSearchInput) clientSearchInput.focus();
+                                if(clientSearchInput) {
+                                    addClientModalEl.addEventListener('hidden.bs.modal', function () {
+                                        clientSearchInput.focus();
+                                    }, { once: true });
+                                }
                             } else {
                                 // Show error message inside the modal
                                 addClientErrorDiv.textContent = result.message || 'Ocurrió un error desconocido.';
