@@ -1380,23 +1380,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             case 'search_shipping_addresses': // Explicit action for search
                 header('Content-Type: application/json');
                 $id_cliente = $_POST['id_cliente'] ?? null;
-            case 'change_client':
-                $id_factura_to_change = $_GET['id'] ?? null;
-                $new_client_id = $_POST['new_client_id'] ?? null;
-
-                if (!$id_factura_to_change || !$new_client_id) {
-                    throw new Exception("Falta información para cambiar el cliente.");
-                }
-
-                // Update the client ID for the invoice
-                $stmt_change_client = $pdo->prepare("UPDATE facturas_ventas SET id_cliente = ? WHERE id_factura = ?");
-                $stmt_change_client->execute([$new_client_id, $id_factura_to_change]);
-
-                if ($in_transaction) $pdo->commit();
-                mostrarMensaje("Cliente de la factura actualizado con éxito.", "success");
-                header("Location: facturas_ventas.php?view=details&id=" . htmlspecialchars($id_factura_to_change));
-                exit();
-                break;
                 $search_term = $_POST['search_term'] ?? ''; // New search term parameter
 
                 if (!$id_cliente) {
@@ -1427,6 +1410,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 exit();
                 break;
 
+            case 'change_client':
+                $id_factura_to_change = $_POST['id_factura'] ?? null;
+                $new_client_id = $_POST['new_client_id'] ?? null;
+
+                if (!$id_factura_to_change || !$new_client_id) {
+                    throw new Exception("Falta información para cambiar el cliente.");
+                }
+
+                // Update the client ID for the invoice
+                $stmt_change_client = $pdo->prepare("UPDATE facturas_ventas SET id_cliente = ? WHERE id_factura = ?");
+                $stmt_change_client->execute([$new_client_id, $id_factura_to_change]);
+
+                if ($in_transaction) $pdo->commit();
+                mostrarMensaje("Cliente de la factura actualizado con éxito.", "success");
+                header("Location: facturas_ventas.php?view=details&id=" . htmlspecialchars($id_factura_to_change));
+                exit();
+                break;
 
             default:
                 throw new Exception("Acción no reconocida.");
