@@ -1333,7 +1333,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             case 'crear_cliente_ajax':
                 header('Content-Type: application/json');
                 try {
-                    $nombre_cliente = $_POST['nombre_cliente'] ?? '';
+                    $nombre_cliente = mb_strtoupper($_POST['nombre_cliente'] ?? '', 'UTF-8');
                     if (empty($nombre_cliente)) {
                         throw new Exception("El nombre del cliente es obligatorio.");
                     }
@@ -1350,14 +1350,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $stmt->execute([
                         $new_client_id,
                         $nombre_cliente,
-                        $_POST['nif'] ?? null,
-                        $_POST['direccion'] ?? null,
-                        $_POST['ciudad'] ?? null,
-                        $_POST['provincia'] ?? null,
-                        $_POST['codigo_postal'] ?? null,
-                        $_POST['telefono'] ?? null,
-                        $_POST['email'] ?? null,
-                        $_POST['observaciones'] ?? null
+                        mb_strtoupper($_POST['nif'] ?? '', 'UTF-8'),
+                        mb_strtoupper($_POST['direccion'] ?? '', 'UTF-8'),
+                        mb_strtoupper($_POST['ciudad'] ?? '', 'UTF-8'),
+                        mb_strtoupper($_POST['provincia'] ?? '', 'UTF-8'),
+                        mb_strtoupper($_POST['codigo_postal'] ?? '', 'UTF-8'),
+                        mb_strtoupper($_POST['telefono'] ?? '', 'UTF-8'),
+                        mb_strtoupper($_POST['email'] ?? '', 'UTF-8'),
+                        mb_strtoupper($_POST['observaciones'] ?? '', 'UTF-8')
                     ]);
 
                     // Devolver los datos del nuevo cliente
@@ -1380,6 +1380,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             case 'search_shipping_addresses': // Explicit action for search
                 header('Content-Type: application/json');
                 $id_cliente = $_POST['id_cliente'] ?? null;
+            case 'change_client':
+                $id_factura_to_change = $_GET['id'] ?? null;
+                $new_client_id = $_POST['new_client_id'] ?? null;
+
+                if (!$id_factura_to_change || !$new_client_id) {
+                    throw new Exception("Falta información para cambiar el cliente.");
+                }
+
+                // Update the client ID for the invoice
+                $stmt_change_client = $pdo->prepare("UPDATE facturas_ventas SET id_cliente = ? WHERE id_factura = ?");
+                $stmt_change_client->execute([$new_client_id, $id_factura_to_change]);
+
+                if ($in_transaction) $pdo->commit();
+                mostrarMensaje("Cliente de la factura actualizado con éxito.", "success");
+                header("Location: facturas_ventas.php?view=details&id=" . htmlspecialchars($id_factura_to_change));
+                exit();
+                break;
                 $search_term = $_POST['search_term'] ?? ''; // New search term parameter
 
                 if (!$id_cliente) {
@@ -2305,6 +2322,9 @@ if ($view == 'list') {
                                         <a href="clientes.php?id=<?php echo htmlspecialchars($factura_actual['id_cliente']); ?>" class="btn btn-sm btn-outline-secondary ms-2" title="Ver/Modificar Ficha Cliente">
                                             <i class="bi bi-person-lines-fill"></i> Ver Ficha
                                         </a>
+                                        <button class="btn btn-sm btn-outline-primary ms-2" data-bs-toggle="modal" data-bs-target="#changeClientModal">
+                                            <i class="bi bi-person-gear"></i> Cambiar Cliente
+                                        </button>
                                     </p>
                                     <p>
                                         <strong>Dirección de Envío:</strong>
@@ -2387,6 +2407,36 @@ if ($view == 'list') {
                                     <i class="bi bi-truck"></i> Volver a Parte de Ruta #<?php echo htmlspecialchars($current_parte_ruta_id); ?>
                                 </a>
                             <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <!-- Modal para cambiar el cliente -->
+                    <div class="modal fade" id="changeClientModal" tabindex="-1" aria-labelledby="changeClientModalLabel" aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="changeClientModalLabel">Cambiar Cliente de la Factura</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <form id="changeClientForm" method="post" action="facturas_ventas.php?id=<?php echo $id_factura; ?>">
+                                        <input type="hidden" name="action" value="change_client">
+                                        <div class="mb-3">
+                                            <label for="new_client_id" class="form-label">Seleccionar nuevo cliente:</label>
+                                            <select class="form-control" id="new_client_id" name="new_client_id" required>
+                                                <?php
+                                                // Assuming $clientes_disponibles is available in this scope
+                                                foreach ($clientes_disponibles as $cliente_option) {
+                                                    $selected = ($cliente_option['id_cliente'] == $factura_actual['id_cliente']) ? 'selected' : '';
+                                                    echo '<option value="' . htmlspecialchars($cliente_option['id_cliente']) . '" ' . $selected . '>' . htmlspecialchars($cliente_option['nombre_cliente']) . '</option>';
+                                                }
+                                                ?>
+                                            </select>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                                    </form>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
