@@ -2419,21 +2419,20 @@ if ($view == 'list') {
                                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                                 </div>
                                 <div class="modal-body">
-                                    <form id="changeClientForm" method="post" action="facturas_ventas.php?id=<?php echo $id_factura; ?>">
-                                        <input type="hidden" name="action" value="change_client">
+                                    <form id="changeClientForm" method="post" action="facturas_ventas.php?view=details&id=<?php echo htmlspecialchars($factura_actual['id_factura']); ?>">
+                                        <input type="hidden" name="accion" value="change_client">
+                                        <input type="hidden" name="id_factura" value="<?php echo htmlspecialchars($factura_actual['id_factura']); ?>">
+                                        <input type="hidden" id="new_client_id_selected" name="new_client_id">
+
                                         <div class="mb-3">
-                                            <label for="new_client_id" class="form-label">Seleccionar nuevo cliente:</label>
-                                            <select class="form-control" id="new_client_id" name="new_client_id" required>
-                                                <?php
-                                                // Assuming $clientes_disponibles is available in this scope
-                                                foreach ($clientes_disponibles as $cliente_option) {
-                                                    $selected = ($cliente_option['id_cliente'] == $factura_actual['id_cliente']) ? 'selected' : '';
-                                                    echo '<option value="' . htmlspecialchars($cliente_option['id_cliente']) . '" ' . $selected . '>' . htmlspecialchars($cliente_option['nombre_cliente']) . '</option>';
-                                                }
-                                                ?>
-                                            </select>
+                                            <label for="change_client_search_input" class="form-label">Buscar Nuevo Cliente:</label>
+                                            <div class="client-search-container">
+                                                <input type="text" class="form-control" id="change_client_search_input" placeholder="Buscar por nombre, NIF, ciudad..." autocomplete="off">
+                                                <div id="change_client_search_results" class="client-search-results"></div>
+                                            </div>
+                                            <small class="text-danger" id="change_client_selection_error" style="display:none;">Por favor, seleccione un cliente de la lista.</small>
                                         </div>
-                                        <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                                        <button type="submit" class="btn btn-primary" id="submitChangeClientBtn" disabled>Guardar Cambios</button>
                                     </form>
                                 </div>
                             </div>
@@ -3404,6 +3403,83 @@ if ($view == 'list') {
                 const addClientModal = new bootstrap.Modal(addClientModalEl);
                 const addClientErrorDiv = document.getElementById('addClientError');
                 const submitNewInvoiceBtn = document.getElementById('submitNewInvoiceBtn');
+
+                // --- Change Client Modal Logic ---
+                const changeClientModal = document.getElementById('changeClientModal');
+                if (changeClientModal) {
+                    const searchInput = document.getElementById('change_client_search_input');
+                    const searchResultsDiv = document.getElementById('change_client_search_results');
+                    const selectedIdInput = document.getElementById('new_client_id_selected');
+                    const errorDiv = document.getElementById('change_client_selection_error');
+                    const submitBtn = document.getElementById('submitChangeClientBtn');
+                    let searchTimeout;
+
+                    searchInput.addEventListener('input', function() {
+                        const searchTerm = this.value.trim();
+                        selectedIdInput.value = '';
+                        submitBtn.disabled = true;
+                        errorDiv.style.display = 'none';
+
+                        clearTimeout(searchTimeout);
+                        if (searchTerm.length > 1) {
+                            searchTimeout = setTimeout(async () => {
+                                try {
+                                    const formData = new FormData();
+                                    formData.append('accion', 'search_clients');
+                                    formData.append('search_term', searchTerm);
+
+                                    const response = await fetch('facturas_ventas.php', {
+                                        method: 'POST',
+                                        body: formData
+                                    });
+                                    const clients = await response.json();
+
+                                    searchResultsDiv.innerHTML = '';
+                                    if (clients.error) {
+                                        searchResultsDiv.innerHTML = `<div class="client-search-results-item text-danger">Error: ${clients.error}</div>`;
+                                    } else if (clients.length > 0) {
+                                        clients.forEach(client => {
+                                            const item = document.createElement('div');
+                                            item.classList.add('client-search-results-item');
+                                            item.textContent = `${client.nombre_cliente} (${client.nif || 'N/A'}) - ${client.ciudad}`;
+                                            item.dataset.clientId = client.id_cliente;
+                                            item.dataset.clientName = client.nombre_cliente;
+                                            item.addEventListener('click', function() {
+                                                searchInput.value = this.dataset.clientName;
+                                                selectedIdInput.value = this.dataset.clientId;
+                                                searchResultsDiv.innerHTML = '';
+                                                submitBtn.disabled = false;
+                                                errorDiv.style.display = 'none';
+                                            });
+                                            searchResultsDiv.appendChild(item);
+                                        });
+                                    } else {
+                                        searchResultsDiv.innerHTML = '<div class="client-search-results-item text-muted">No se encontraron clientes.</div>';
+                                    }
+                                } catch (error) {
+                                    console.error('Error searching clients:', error);
+                                    searchResultsDiv.innerHTML = '<div class="client-search-results-item text-danger">Error al buscar clientes.</div>';
+                                }
+                            }, 300);
+                        } else {
+                            searchResultsDiv.innerHTML = '';
+                        }
+                    });
+
+                    document.addEventListener('click', function(event) {
+                        if (!searchInput.contains(event.target) && !searchResultsDiv.contains(event.target)) {
+                            searchResultsDiv.innerHTML = '';
+                        }
+                    });
+
+                    changeClientModal.querySelector('form').addEventListener('submit', function(event) {
+                        if (!selectedIdInput.value) {
+                            event.preventDefault();
+                            errorDiv.style.display = 'block';
+                        }
+                    });
+                }
+
 
                 if (addClientForm) {
                     addClientForm.addEventListener('submit', async function(event) {
