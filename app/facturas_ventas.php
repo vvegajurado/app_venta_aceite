@@ -3026,77 +3026,80 @@ if ($view == 'list') {
 
                 // NEW: Function to load and populate the shipping address search/select
                 async function loadShippingAddresses(clientId, selectId, groupElement, noInfoElement, selectedAddressId = null) {
+                    const selectElement = document.getElementById(selectId);
+                    if (!selectElement) return;
+
                     groupElement.style.display = 'block';
                     noInfoElement.style.display = 'none';
 
-                    let existingTomSelect = document.getElementById(selectId).tomselect;
-                    if (existingTomSelect) {
-                        existingTomSelect.destroy();
+                    let tomSelect = selectElement.tomselect;
+                    if (tomSelect) {
+                        tomSelect.destroy();
                     }
 
-                    const tomSelect = new TomSelect(`#${selectId}`, {
-                        valueField: 'id_direccion_envio',
-                        labelField: 'full_address',
-                        searchField: ['full_address'],
-                        create: false,
-                        load: async (query, callback) => {
-                            if (!clientId) return callback();
-                            try {
-                                const formData = new FormData();
-                                formData.append('accion', 'search_shipping_addresses');
-                                formData.append('id_cliente', clientId);
-                                formData.append('search_term', query);
+                    selectElement.innerHTML = '<option value="">Cargando...</option>';
 
-                                const response = await fetch('facturas_ventas.php', {
-                                    method: 'POST',
-                                    body: formData
-                                });
-                                const data = await response.json();
+                    if (!clientId) {
+                        selectElement.innerHTML = '<option value="">Seleccione un cliente primero</option>';
+                        return;
+                    }
 
-                                if (data.success) {
-                                    const addresses = data.direcciones.map(dir => ({
-                                        ...dir,
-                                        full_address: `${dir.nombre_direccion} - ${dir.direccion}, ${dir.ciudad}`
-                                    }));
-                                    if (addresses.length === 0) {
-                                        noInfoElement.style.display = 'block';
-                                    }
-                                    callback(addresses);
-                                } else {
-                                    callback();
-                                }
-                            } catch (error) {
-                                console.error('Error loading addresses for TomSelect:', error);
-                                callback();
-                            }
-                        },
-                        render: {
-                            option: function(data, escape) {
-                                return `<div>${escape(data.full_address)}</div>`;
-                            },
-                            item: function(data, escape) {
-                                return `<div>${escape(data.full_address)}</div>`;
-                            }
-                        }
-                    });
+                    try {
+                        const formData = new FormData();
+                        formData.append('accion', 'search_shipping_addresses');
+                        formData.append('id_cliente', clientId);
 
-                    tomSelect.load(function(callback) {
-                        // This function is a bit of a hack to load the initial selected value
-                        // since TomSelect doesn't have a direct way to set an option that isn't loaded yet.
-                        const clientData = clientesMapJs[clientId];
-                        if (clientData && clientData.direcciones_envio) {
-                            const addresses = clientData.direcciones_envio.map(dir => ({
-                                ...dir,
-                                full_address: `${dir.nombre_direccion} - ${dir.direccion}, ${dir.ciudad}`
-                            }));
-                            callback(addresses);
+                        const response = await fetch('facturas_ventas.php', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await response.json();
+
+                        selectElement.innerHTML = ''; // Clear loading/previous options
+
+                        if (data.success && data.direcciones.length > 0) {
+                             // Add a default non-selectable option
+                            let defaultOption = document.createElement('option');
+                            defaultOption.value = "";
+                            defaultOption.textContent = "Seleccione una dirección...";
+                            selectElement.appendChild(defaultOption);
+
+                            data.direcciones.forEach(dir => {
+                                let option = document.createElement('option');
+                                option.value = dir.id_direccion_envio;
+                                option.textContent = `${dir.nombre_direccion} - ${dir.direccion}, ${dir.ciudad}`;
+                                selectElement.appendChild(option);
+                            });
+
+                            // Set selected value
                             if (selectedAddressId) {
-                                tomSelect.setValue(selectedAddressId);
+                                selectElement.value = selectedAddressId;
+                            } else {
+                                const principal = data.direcciones.find(a => a.es_principal == 1);
+                                if (principal) {
+                                    selectElement.value = principal.id_direccion_envio;
+                                }
                             }
                         } else {
-                            callback();
+                            noInfoElement.style.display = 'block';
+                             let defaultOption = document.createElement('option');
+                            defaultOption.value = "";
+                            defaultOption.textContent = "No hay direcciones disponibles";
+                            selectElement.appendChild(defaultOption);
                         }
-                    });
+
+                        new TomSelect(selectElement,{
+                            create: false,
+                            sortField: {
+                                field: "text",
+                                direction: "asc"
+                            }
+                        });
+
+                    } catch (error) {
+                        console.error('Error fetching shipping addresses:', error);
+                        selectElement.innerHTML = '<option value="">Error al cargar direcciones</option>';
+                    }
                 }
 
 
