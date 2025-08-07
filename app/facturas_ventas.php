@@ -1687,6 +1687,7 @@ if ($view == 'list') {
     <title>Gestión de Facturas de Ventas</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
     <style>
         /* Estilos generales */
         body {
@@ -2198,14 +2199,9 @@ if ($view == 'list') {
                                         </div>
                                         <!-- NEW: Campo para Dirección de Envío con búsqueda -->
                                         <div class="mb-3" id="shippingAddressGroup" style="display: none;">
-                                            <label for="shipping_address_search_input" class="form-label">Dirección de Envío</label>
-                                            <div class="client-search-container">
-                                                <input type="text" class="form-control" id="shipping_address_search_input" placeholder="Buscar dirección de envío..." autocomplete="off">
-                                                <input type="hidden" id="id_direccion_envio_selected" name="id_direccion_envio">
-                                                <div id="shipping_address_search_results" class="client-search-results"></div>
-                                            </div>
-                                            <small class="text-danger" id="shipping_address_error" style="display:none;">Por favor, seleccione una dirección de envío.</small>
-                                            <small class="text-muted" id="no_shipping_addresses_info" style="display:none;">Este cliente no tiene direcciones de envío registradas. Se usará la dirección principal del cliente.</small>
+                                            <label for="id_direccion_envio" class="form-label">Dirección de Envío</label>
+                                            <select id="id_direccion_envio" name="id_direccion_envio" placeholder="Seleccione una dirección..."></select>
+                                            <small class="text-muted" id="no_shipping_addresses_info" style="display:none;">Este cliente no tiene direcciones de envío secundarias. Se usará la dirección principal del cliente.</small>
                                         </div>
 
                                         <div class="mb-3">
@@ -2716,16 +2712,10 @@ if ($view == 'list') {
                                             </div>
                                             <small class="text-danger" id="edit_client_selection_error" style="display:none;">Por favor, seleccione un cliente de la lista.</small>
                                         </div>
-
-                                        <div class="mb-3">
-                                            <label for="edit_shipping_address_search_input" class="form-label">Dirección de Envío</label>
-                                            <div class="client-search-container">
-                                                <input type="text" class="form-control" id="edit_shipping_address_search_input" placeholder="Buscar dirección de envío..." autocomplete="off">
-                                                <input type="hidden" id="edit_id_direccion_envio_selected" name="id_direccion_envio">
-                                                <div id="edit_shipping_address_search_results" class="client-search-results"></div>
-                                            </div>
-                                            <small class="text-danger" id="edit_shipping_address_error" style="display:none;">Por favor, seleccione una dirección de envío.</small>
-                                            <small class="text-muted" id="edit_no_shipping_addresses_info" style="display:none;">Este cliente no tiene direcciones de envío registradas. Se usará la dirección principal del cliente.</small>
+                                        <div class="mb-3" id="editShippingAddressGroup" style="display: none;">
+                                            <label for="edit_id_direccion_envio" class="form-label">Dirección de Envío</label>
+                                            <select id="edit_id_direccion_envio" name="id_direccion_envio" placeholder="Seleccione una dirección..."></select>
+                                            <small class="text-muted" id="edit_no_shipping_addresses_info" style="display:none;">Este cliente no tiene direcciones de envío secundarias. Se usará la dirección principal del cliente.</small>
                                         </div>
                                     </div>
                                     <div class="modal-footer">
@@ -2742,6 +2732,7 @@ if ($view == 'list') {
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
     <script>
         // Mapeo de productos para acceso rápido por ID
         const productosMapJs = <?php echo json_encode(array_column($productos, null, 'id_producto')); ?>;
@@ -2890,11 +2881,8 @@ if ($view == 'list') {
 
                 // NEW: Elements for shipping address selection
                 const shippingAddressGroup = document.getElementById('shippingAddressGroup');
-                const shippingAddressSearchInput = document.getElementById('shipping_address_search_input');
-                const idDireccionEnvioSelectedInput = document.getElementById('id_direccion_envio_selected');
-                const shippingAddressSearchResultsDiv = document.getElementById('shipping_address_search_results');
-                const shippingAddressError = document.getElementById('shipping_address_error');
                 const noShippingAddressesInfo = document.getElementById('no_shipping_addresses_info');
+                let tomSelectDireccion;
 
 
                 // Retirar Stock Modal elements
@@ -2936,7 +2924,7 @@ if ($view == 'list') {
                     clientSearchInput.value = newInvoiceClientName || ''; // Set the name in the search input
 
                     // NEW: Load shipping addresses for the pre-selected client
-                    loadShippingAddresses(newInvoiceClientId, shippingAddressSearchInput, idDireccionEnvioSelectedInput, shippingAddressSearchResultsDiv, shippingAddressGroup, shippingAddressError, noShippingAddressesInfo);
+                    loadShippingAddresses(newInvoiceClientId, 'id_direccion_envio', shippingAddressGroup, noShippingAddressesInfo);
 
 
                     // Remove the parameters from the URL to avoid re-opening the modal on refresh
@@ -2955,10 +2943,10 @@ if ($view == 'list') {
 
                         // NEW: Clear and hide shipping address fields when client search changes
                         shippingAddressGroup.style.display = 'none';
-                        shippingAddressSearchInput.value = '';
-                        idDireccionEnvioSelectedInput.value = '';
-                        shippingAddressSearchResultsDiv.innerHTML = '';
-                        shippingAddressError.style.display = 'none';
+                        if (tomSelectDireccion) {
+                            tomSelectDireccion.destroy();
+                            tomSelectDireccion = null;
+                        }
                         noShippingAddressesInfo.style.display = 'none';
 
 
@@ -2991,7 +2979,7 @@ if ($view == 'list') {
                                                 idClienteSelectedInput.value = this.dataset.clientId;
                                                 clientSearchResultsDiv.innerHTML = ''; // Clear results
                                                 // NEW: Load shipping addresses after client is selected
-                                                loadShippingAddresses(this.dataset.clientId, shippingAddressSearchInput, idDireccionEnvioSelectedInput, shippingAddressSearchResultsDiv, shippingAddressGroup, shippingAddressError, noShippingAddressesInfo);
+                                                loadShippingAddresses(this.dataset.clientId, 'id_direccion_envio', shippingAddressGroup, noShippingAddressesInfo);
                                             });
                                             clientSearchResultsDiv.appendChild(item);
                                         });
@@ -3029,176 +3017,84 @@ if ($view == 'list') {
                                 clientSelectionError.style.display = 'none'; // Hide error message
                             }
 
-                            // Validate shipping address selection if the group is visible AND there are addresses available
-                            if (shippingAddressGroup.style.display === 'block') {
-                                // Only validate if there are actual options to select (i.e., not "No hay direcciones...")
-                                if (!idDireccionEnvioSelectedInput.value && noShippingAddressesInfo.style.display !== 'block') {
-                                    event.preventDefault();
-                                    shippingAddressError.style.display = 'block';
-                                    isValid = false;
-                                } else {
-                                    shippingAddressError.style.display = 'none';
-                                }
-                            }
-
                             if (!isValid) {
                                 event.preventDefault(); // Ensure form is not submitted if any validation fails
                             }
                         });
-
-                        // Optional: Hide error when user starts interacting with the select again
-                        if (idDireccionEnvioSelectedInput) {
-                            idDireccionEnvioSelectedInput.addEventListener('change', function() {
-                                if (this.value) {
-                                    shippingAddressError.style.display = 'none';
-                                }
-                            });
-                        }
                     }
                 }
 
                 // NEW: Function to load and populate the shipping address search/select
-                async function loadShippingAddresses(clientId, searchInputElement, selectedIdElement, resultsDivElement, groupElement, errorElement, noInfoElement, selectedAddressId = null) {
-                    groupElement.style.display = 'block'; // Show the group container
-                    searchInputElement.value = ''; // Clear search input
-                    selectedIdElement.value = ''; // Clear selected ID
-                    resultsDivElement.innerHTML = ''; // Clear results
-                    errorElement.style.display = 'none';
+                async function loadShippingAddresses(clientId, selectId, groupElement, noInfoElement, selectedAddressId = null) {
+                    groupElement.style.display = 'block';
                     noInfoElement.style.display = 'none';
 
-                    if (!clientId) {
-                        searchInputElement.placeholder = 'Seleccione un cliente primero';
-                        return;
+                    let existingTomSelect = document.getElementById(selectId).tomselect;
+                    if (existingTomSelect) {
+                        existingTomSelect.destroy();
                     }
 
-                    searchInputElement.placeholder = 'Buscar dirección de envío...'; // Reset placeholder
+                    const tomSelect = new TomSelect(`#${selectId}`, {
+                        valueField: 'id_direccion_envio',
+                        labelField: 'full_address',
+                        searchField: ['full_address'],
+                        create: false,
+                        load: async (query, callback) => {
+                            if (!clientId) return callback();
+                            try {
+                                const formData = new FormData();
+                                formData.append('accion', 'search_shipping_addresses');
+                                formData.append('id_cliente', clientId);
+                                formData.append('search_term', query);
 
-                    try {
-                        const formData = new FormData();
-                        formData.append('accion', 'get_shipping_addresses');
-                        formData.append('id_cliente', clientId);
-                        // No search_term initially, load all for the client
-
-                        const response = await fetch('facturas_ventas.php', {
-                            method: 'POST',
-                            body: formData
-                        });
-                        const data = await response.json();
-
-                        if (data.success) {
-                            if (data.direcciones.length > 0) {
-                                // Populate resultsDivElement with initial options
-                                data.direcciones.forEach(dir => {
-                                    const item = document.createElement('div');
-                                    item.classList.add('client-search-results-item'); // Reuse client-search-results-item class
-                                    const isPrincipalText = dir.es_principal == 1 ? ' (Principal)' : '';
-                                    item.textContent = `${dir.nombre_direccion} - ${dir.direccion}, ${dir.ciudad}${isPrincipalText}`;
-                                    item.dataset.idDireccionEnvio = dir.id_direccion_envio;
-                                    item.dataset.fullAddress = `${dir.nombre_direccion} - ${dir.direccion}, ${dir.ciudad}, ${dir.provincia} ${dir.codigo_postal}`;
-                                    item.addEventListener('click', function() {
-                                        searchInputElement.value = this.dataset.fullAddress;
-                                        selectedIdElement.value = this.dataset.idDireccionEnvio;
-                                        resultsDivElement.innerHTML = ''; // Clear results
-                                        errorElement.style.display = 'none'; // Hide error if selection is made
-                                    });
-                                    resultsDivElement.appendChild(item);
+                                const response = await fetch('facturas_ventas.php', {
+                                    method: 'POST',
+                                    body: formData
                                 });
+                                const data = await response.json();
 
-                                // Pre-select address if selectedAddressId is provided (for edit modal, though not used here for invoice)
-                                if (selectedAddressId) {
-                                    const preselectedDir = data.direcciones.find(dir => dir.id_direccion_envio == selectedAddressId);
-                                    if (preselectedDir) {
-                                        searchInputElement.value = `${preselectedDir.nombre_direccion} - ${preselectedDir.direccion}, ${preselectedDir.ciudad}, ${preselectedDir.provincia} ${preselectedDir.codigo_postal}`;
-                                        selectedIdElement.value = selectedAddressId;
+                                if (data.success) {
+                                    const addresses = data.direcciones.map(dir => ({
+                                        ...dir,
+                                        full_address: `${dir.nombre_direccion} - ${dir.direccion}, ${dir.ciudad}`
+                                    }));
+                                    if (addresses.length === 0) {
+                                        noInfoElement.style.display = 'block';
                                     }
+                                    callback(addresses);
                                 } else {
-                                    // If no specific address is selected (new invoice), try to select the principal one
-                                    const principalDir = data.direcciones.find(dir => dir.es_principal == 1);
-                                    if (principalDir) {
-                                        searchInputElement.value = `${principalDir.nombre_direccion} - ${principalDir.direccion}, ${principalDir.ciudad}, ${principalDir.provincia} ${principalDir.codigo_postal}`;
-                                        selectedIdElement.value = principalDir.id_direccion_envio;
-                                    }
+                                    callback();
                                 }
-                            } else {
-                                searchInputElement.value = ''; // Clear any previous value
-                                selectedIdElement.value = ''; // Ensure hidden input is empty
-                                resultsDivElement.innerHTML = ''; // Clear results
-                                noInfoElement.style.display = 'block';
+                            } catch (error) {
+                                console.error('Error loading addresses for TomSelect:', error);
+                                callback();
                             }
-                        } else {
-                            searchInputElement.value = '';
-                            selectedIdElement.value = '';
-                            resultsDivElement.innerHTML = `<div class="client-search-results-item text-danger">Error al cargar: ${data.message}</div>`;
-                            errorElement.style.display = 'block';
-                            noInfoElement.style.display = 'none';
-                        }
-                    } catch (error) {
-                        console.error('Error fetching shipping addresses:', error);
-                        searchInputElement.value = '';
-                        selectedIdElement.value = '';
-                        resultsDivElement.innerHTML = '<div class="client-search-results-item text-danger">Error al cargar direcciones</div>';
-                        errorElement.style.display = 'block';
-                        noInfoElement.style.display = 'none';
-                    }
-                }
-
-                // NEW: Event listeners for shipping address search inputs
-                if (shippingAddressSearchInput) {
-                    shippingAddressSearchInput.addEventListener('input', function() {
-                        const searchTerm = this.value.trim();
-                        const currentClientId = idClienteSelectedInput.value;
-                        idDireccionEnvioSelectedInput.value = ''; // Clear selected ID on new search
-                        shippingAddressError.style.display = 'none'; // Hide error message
-                        noShippingAddressesInfo.style.display = 'none'; // Hide info message
-
-                        clearTimeout(shippingAddressSearchTimeout);
-                        if (searchTerm.length > 1 && currentClientId) { // Search after 2 characters and if client is selected
-                            shippingAddressSearchTimeout = setTimeout(async () => {
-                                try {
-                                    const formData = new FormData();
-                                    formData.append('accion', 'search_shipping_addresses'); // Use new action
-                                    formData.append('id_cliente', currentClientId);
-                                    formData.append('search_term', searchTerm);
-
-                                    const response = await fetch('facturas_ventas.php', {
-                                        method: 'POST',
-                                        body: formData
-                                    });
-                                    const data = await response.json();
-
-                                    shippingAddressSearchResultsDiv.innerHTML = '';
-                                    if (data.success && data.direcciones.length > 0) {
-                                        data.direcciones.forEach(dir => {
-                                            const item = document.createElement('div');
-                                            item.classList.add('client-search-results-item');
-                                            const isPrincipalText = dir.es_principal == 1 ? ' (Principal)' : '';
-                                            item.textContent = `${dir.nombre_direccion} - ${dir.direccion}, ${dir.ciudad}${isPrincipalText}`;
-                                            item.dataset.idDireccionEnvio = dir.id_direccion_envio;
-                                            item.dataset.fullAddress = `${dir.nombre_direccion} - ${dir.direccion}, ${dir.ciudad}, ${dir.provincia} ${dir.codigo_postal}`;
-                                            item.addEventListener('click', function() {
-                                                shippingAddressSearchInput.value = this.dataset.fullAddress;
-                                                idDireccionEnvioSelectedInput.value = this.dataset.idDireccionEnvio;
-                                                shippingAddressSearchResultsDiv.innerHTML = '';
-                                                shippingAddressError.style.display = 'none';
-                                            });
-                                            shippingAddressSearchResultsDiv.appendChild(item);
-                                        });
-                                    } else {
-                                        shippingAddressSearchResultsDiv.innerHTML = '<div class="client-search-results-item text-muted">No se encontraron direcciones.</div>';
-                                    }
-                                } catch (error) {
-                                    console.error('Error searching shipping addresses:', error);
-                                    shippingAddressSearchResultsDiv.innerHTML = '<div class="client-search-results-item text-danger">Error al buscar direcciones.</div>';
-                                }
-                            }, 300);
-                        } else {
-                            shippingAddressSearchResultsDiv.innerHTML = '';
+                        },
+                        render: {
+                            option: function(data, escape) {
+                                return `<div>${escape(data.full_address)}</div>`;
+                            },
+                            item: function(data, escape) {
+                                return `<div>${escape(data.full_address)}</div>`;
+                            }
                         }
                     });
 
-                    document.addEventListener('click', function(event) {
-                        if (!shippingAddressSearchInput.contains(event.target) && !shippingAddressSearchResultsDiv.contains(event.target)) {
-                            shippingAddressSearchResultsDiv.innerHTML = '';
+                    tomSelect.load(function(callback) {
+                        // This function is a bit of a hack to load the initial selected value
+                        // since TomSelect doesn't have a direct way to set an option that isn't loaded yet.
+                        const clientData = clientesMapJs[clientId];
+                        if (clientData && clientData.direcciones_envio) {
+                            const addresses = clientData.direcciones_envio.map(dir => ({
+                                ...dir,
+                                full_address: `${dir.nombre_direccion} - ${dir.direccion}, ${dir.ciudad}`
+                            }));
+                            callback(addresses);
+                            if (selectedAddressId) {
+                                tomSelect.setValue(selectedAddressId);
+                            }
+                        } else {
+                            callback();
                         }
                     });
                 }
@@ -3318,19 +3214,9 @@ if ($view == 'list') {
                     const editClientSearchResultsDiv = document.getElementById('edit_client_search_results');
                     const editClientSelectionError = document.getElementById('edit_client_selection_error');
                     const editFacturaForm = document.getElementById('editFacturaForm');
-
-                    const editShippingAddressSearchInput = document.getElementById('edit_shipping_address_search_input');
-                    const editIdDireccionEnvioSelectedInput = document.getElementById('edit_id_direccion_envio_selected');
-                    const editShippingAddressSearchResultsDiv = document.getElementById('edit_shipping_address_search_results');
-                    const editShippingAddressError = document.getElementById('edit_shipping_address_error');
+                    const editShippingAddressGroup = document.getElementById('editShippingAddressGroup');
                     const editNoShippingAddressesInfo = document.getElementById('edit_no_shipping_addresses_info');
-
-                    // Load addresses when the modal is shown
-                    editFacturaModal.addEventListener('show.bs.modal', () => {
-                        const currentClientId = editIdClienteSelectedInput.value;
-                        const currentShippingAddressId = <?php echo json_encode($factura_actual['id_direccion_envio'] ?? null); ?>;
-                        loadShippingAddresses(currentClientId, editShippingAddressSearchInput, editIdDireccionEnvioSelectedInput, editShippingAddressSearchResultsDiv, editShippingAddressError, editNoShippingAddressesInfo, currentShippingAddressId);
-                    });
+                    let tomSelectEditDireccion;
 
                     // Client search functionality for the edit modal
                     if (editClientSearchInput) {
@@ -3340,11 +3226,13 @@ if ($view == 'list') {
                             if(editClientSelectionError) editClientSelectionError.style.display = 'none';
 
                             // Clear shipping address fields when client changes
-                            editShippingAddressSearchInput.value = '';
-                            editIdDireccionEnvioSelectedInput.value = '';
-                            editShippingAddressSearchResultsDiv.innerHTML = '';
-                            editShippingAddressError.style.display = 'none';
+                            if (tomSelectEditDireccion) {
+                                tomSelectEditDireccion.destroy();
+                                tomSelectEditDireccion = null;
+                            }
                             editNoShippingAddressesInfo.style.display = 'none';
+                            editShippingAddressGroup.style.display = 'none';
+
 
                             clearTimeout(clientSearchTimeout);
                             if (searchTerm.length > 1) {
@@ -3371,7 +3259,7 @@ if ($view == 'list') {
                                                     editClientSearchInput.value = this.dataset.clientName;
                                                     editIdClienteSelectedInput.value = this.dataset.clientId;
                                                     editClientSearchResultsDiv.innerHTML = '';
-                                                    loadShippingAddresses(this.dataset.clientId, editShippingAddressSearchInput, editIdDireccionEnvioSelectedInput, editShippingAddressSearchResultsDiv, editShippingAddressError, editNoShippingAddressesInfo);
+                                                    loadShippingAddresses(this.dataset.clientId, 'edit_id_direccion_envio', editShippingAddressGroup, editNoShippingAddressesInfo);
                                                 });
                                                 editClientSearchResultsDiv.appendChild(item);
                                             });
@@ -3395,6 +3283,13 @@ if ($view == 'list') {
                         });
                     }
 
+                    // Load addresses when the modal is shown
+                    editFacturaModal.addEventListener('show.bs.modal', () => {
+                        const currentClientId = editIdClienteSelectedInput.value;
+                        const currentShippingAddressId = <?php echo json_encode($factura_actual['id_direccion_envio'] ?? null); ?>;
+                        loadShippingAddresses(currentClientId, 'edit_id_direccion_envio', editShippingAddressGroup, editNoShippingAddressesInfo, currentShippingAddressId);
+                    });
+
                     if (editFacturaForm) {
                         editFacturaForm.addEventListener('submit', function(event) {
                             if (!editIdClienteSelectedInput.value) {
@@ -3402,61 +3297,6 @@ if ($view == 'list') {
                                 if(editClientSelectionError) editClientSelectionError.style.display = 'block';
                             } else {
                                 if(editClientSelectionError) editClientSelectionError.style.display = 'none';
-                            }
-                        });
-                    }
-
-                    if(editShippingAddressSearchInput) {
-                        editShippingAddressSearchInput.addEventListener('input', function() {
-                            const searchTerm = this.value.trim();
-                            const currentClientId = editIdClienteSelectedInput.value;
-                            editIdDireccionEnvioSelectedInput.value = '';
-                            editShippingAddressError.style.display = 'none';
-
-                            clearTimeout(shippingAddressSearchTimeout);
-                            if (searchTerm.length > 1 && currentClientId) {
-                                shippingAddressSearchTimeout = setTimeout(async () => {
-                                    try {
-                                        const formData = new FormData();
-                                        formData.append('accion', 'search_shipping_addresses');
-                                        formData.append('id_cliente', currentClientId);
-                                        formData.append('search_term', searchTerm);
-
-                                        const response = await fetch('facturas_ventas.php', { method: 'POST', body: formData });
-                                        const data = await response.json();
-
-                                        editShippingAddressSearchResultsDiv.innerHTML = '';
-                                        if (data.success && data.direcciones.length > 0) {
-                                            data.direcciones.forEach(dir => {
-                                                const item = document.createElement('div');
-                                                item.classList.add('client-search-results-item');
-                                                item.textContent = `${dir.nombre_direccion} - ${dir.direccion}, ${dir.ciudad}`;
-                                                item.dataset.idDireccionEnvio = dir.id_direccion_envio;
-                                                item.dataset.fullAddress = `${dir.nombre_direccion} - ${dir.direccion}, ${dir.ciudad}`;
-                                                item.addEventListener('click', function() {
-                                                    editShippingAddressSearchInput.value = this.dataset.fullAddress;
-                                                    editIdDireccionEnvioSelectedInput.value = this.dataset.idDireccionEnvio;
-                                                    editShippingAddressSearchResultsDiv.innerHTML = '';
-                                                    editShippingAddressError.style.display = 'none';
-                                                });
-                                                editShippingAddressSearchResultsDiv.appendChild(item);
-                                            });
-                                        } else {
-                                            editShippingAddressSearchResultsDiv.innerHTML = '<div class="client-search-results-item text-muted">No se encontraron direcciones.</div>';
-                                        }
-                                    } catch (error) {
-                                        console.error('Error searching shipping addresses:', error);
-                                        editShippingAddressSearchResultsDiv.innerHTML = '<div class="client-search-results-item text-danger">Error al buscar.</div>';
-                                    }
-                                }, 300);
-                            } else {
-                                editShippingAddressSearchResultsDiv.innerHTML = '';
-                            }
-                        });
-
-                        document.addEventListener('click', function(event) {
-                            if (editShippingAddressSearchResultsDiv && !editShippingAddressSearchInput.contains(event.target) && !editShippingAddressSearchResultsDiv.contains(event.target)) {
-                                editShippingAddressSearchResultsDiv.innerHTML = '';
                             }
                         });
                     }
