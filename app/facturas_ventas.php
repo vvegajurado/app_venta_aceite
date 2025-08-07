@@ -705,7 +705,20 @@ function recalcularTotalPedido(PDO $pdo, int $id_pedido) {
 
         // 2. Obtener todas las líneas de detalle de este pedido
         // Necesitamos los valores originales de cantidad, precio_unitario_venta, descuento_porcentaje, recargo_porcentaje, iva_porcentaje
-        $stmt_get_line_items = $pdo->prepare("SELECT id_detalle_pedido, cantidad_solicitada, precio_unitario_venta, descuento_porcentaje, recargo_porcentaje, iva_porcentaje FROM detalle_pedidos WHERE id_pedido = ? FOR UPDATE");
+        // NEW: Also fetch litros_por_unidad from products for total liters calculation
+        $stmt_get_line_items = $pdo->prepare("
+            SELECT
+                dp.id_detalle_pedido,
+                dp.cantidad_solicitada,
+                dp.precio_unitario_venta,
+                dp.descuento_porcentaje,
+                dp.recargo_porcentaje,
+                dp.iva_porcentaje,
+                COALESCE(p.litros_por_unidad, 1.00) AS litros_por_unidad
+            FROM detalle_pedidos dp
+            JOIN productos p ON dp.id_producto = p.id_producto
+            WHERE dp.id_pedido = ? FOR UPDATE
+        ");
         $stmt_get_line_items->execute([$id_pedido]);
         $line_items = $stmt_get_line_items->fetchAll(PDO::FETCH_ASSOC);
 
@@ -737,6 +750,7 @@ function recalcularTotalPedido(PDO $pdo, int $id_pedido) {
         $final_total_base_imponible_pedido = "0";
         $final_total_iva_pedido = "0";
         $final_total_pedido_iva_incluido = "0";
+        $final_total_litros_pedido = "0"; // NEW
 
         // 3. Recalcular cada línea de detalle aplicando el ajuste global proporcionalmente
         $stmt_update_line_item = $pdo->prepare("
@@ -754,6 +768,7 @@ function recalcularTotalPedido(PDO $pdo, int $id_pedido) {
             $descuento_linea_str = (string)$item['descuento_porcentaje'];
             $recargo_linea_str = (string)$item['recargo_porcentaje'];
             $iva_linea_str = (string)$item['iva_porcentaje'];
+            $litros_por_unidad_str = (string)$item['litros_por_unidad']; // NEW
 
             // Recalcular el total de la línea con sus propios descuentos/recargos (IVA incluido)
             $total_linea_before_global_adjustment = bcmul(
@@ -792,6 +807,8 @@ function recalcularTotalPedido(PDO $pdo, int $id_pedido) {
             $final_total_base_imponible_pedido = bcadd($final_total_base_imponible_pedido, $subtotal_linea_base_final);
             $final_total_iva_pedido = bcadd($final_total_iva_pedido, $subtotal_linea_iva_final);
             $final_total_pedido_iva_incluido = bcadd($final_total_pedido_iva_incluido, $total_linea_iva_incluido_final);
+
+            $final_total_litros_pedido = bcadd($final_total_litros_pedido, bcmul($cantidad_str, $litros_por_unidad_str)); // NEW
         }
 
         // 4. Actualizar la cabecera del pedido con los nuevos totales
@@ -802,7 +819,8 @@ function recalcularTotalPedido(PDO $pdo, int $id_pedido) {
                 total_iva_pedido = ?,
                 total_pedido_iva_incluido = ?,
                 descuento_global_aplicado = ?,
-                recargo_global_aplicado = ?
+                recargo_global_aplicado = ?,
+                total_litros = ? -- NEW
             WHERE id_pedido = ?
         ");
         $stmt_update_pedido->execute([
@@ -811,6 +829,7 @@ function recalcularTotalPedido(PDO $pdo, int $id_pedido) {
             round((float)$final_total_pedido_iva_incluido, 2),
             round((float)$descuento_global_aplicado_str, 2),
             round((float)$recargo_global_aplicado_str, 2),
+            round((float)$final_total_litros_pedido, 2), // NEW
             $id_pedido
         ]);
 
@@ -864,6 +883,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 if ($in_transaction) $pdo->commit();
                 mostrarMensaje("Factura creada con éxito. ID: " . htmlspecialchars($id_factura_nueva), "success");
                 header("Location: facturas_ventas.php?view=details&id=" . htmlspecialchars($id_factura_nueva));
+                exit();
+                break;
+
+            case 'editar_factura':
+                $id_factura = $_POST['id_factura'] ?? null;
+                $id_cliente = $_POST['id_cliente'] ?? null;
+                $fecha_factura = $_POST['fecha_factura'] ?? null;
+                $id_direccion_envio = empty($_POST['id_direccion_envio']) ? null : (int)$_POST['id_direccion_envio'];
+
+                if (empty($id_factura) || empty($id_cliente) || empty($fecha_factura)) {
+                    throw new Exception("Faltan datos requeridos para editar la factura.");
+                }
+
+                $stmt = $pdo->prepare(
+                    "UPDATE facturas_ventas SET id_cliente = ?, fecha_factura = ?, id_direccion_envio = ? WHERE id_factura = ?"
+                );
+                $stmt->execute([$id_cliente, $fecha_factura, $id_direccion_envio, $id_factura]);
+
+                if ($in_transaction) $pdo->commit();
+                mostrarMensaje("Factura actualizada con éxito.", "success");
+                header("Location: facturas_ventas.php?view=details&id=" . htmlspecialchars($id_factura));
                 exit();
                 break;
 
@@ -1322,6 +1362,48 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
             // NEW: Action for getting shipping addresses of a client
             case 'get_shipping_addresses':
+            case 'add_client_from_modal':
+                header('Content-Type: application/json');
+                try {
+                    $nombre_cliente = $_POST['nombre_cliente'] ?? '';
+                    if (empty($nombre_cliente)) {
+                        throw new Exception("El nombre del cliente es obligatorio.");
+                    }
+
+                    $stmt = $pdo->prepare("
+                        INSERT INTO clientes (nombre_cliente, nif, direccion, ciudad, provincia, codigo_postal, telefono, email)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ");
+                    $stmt->execute([
+                        strtoupper($nombre_cliente),
+                        strtoupper($_POST['nif'] ?? null),
+                        strtoupper($_POST['direccion'] ?? null),
+                        strtoupper($_POST['ciudad'] ?? null),
+                        strtoupper($_POST['provincia'] ?? null),
+                        strtoupper($_POST['codigo_postal'] ?? null),
+                        strtoupper($_POST['telefono'] ?? null),
+                        strtoupper($_POST['email'] ?? null)
+                    ]);
+                    $new_client_id = $pdo->lastInsertId();
+
+                    if ($in_transaction) $pdo->commit();
+
+                    echo json_encode([
+                        'success' => true,
+                        'message' => 'Cliente creado con éxito.',
+                        'new_client' => [
+                            'id_cliente' => $new_client_id,
+                            'nombre_cliente' => $nombre_cliente
+                        ]
+                    ]);
+
+                } catch (Exception $e) {
+                    if ($in_transaction) $pdo->rollBack();
+                    echo json_encode(['success' => false, 'message' => 'Error al crear cliente: ' . $e->getMessage()]);
+                }
+                exit();
+                break;
+
             case 'search_shipping_addresses': // Explicit action for search
                 
                 header('Content-Type: application/json');
@@ -1454,15 +1536,15 @@ try {
 
 if ($view == 'list') {
     try {
-        $stmt_facturas = $pdo->query("
+        $sql = "
             SELECT
                 fv.id_factura,
                 fv.fecha_factura,
                 fv.id_cliente,
-                fv.id_direccion_envio, -- NEW: Select id_direccion_envio
+                fv.id_direccion_envio,
                 c.nombre_cliente,
-                de.nombre_direccion AS nombre_direccion_envio, -- NEW: Select shipping address name
-                de.direccion AS direccion_envio_completa, -- NEW: Select full shipping address
+                de.nombre_direccion AS nombre_direccion_envio,
+                de.direccion AS direccion_envio_completa,
                 fv.total_factura_iva_incluido,
                 fv.estado_pago,
                 fv.id_pedido_origen,
@@ -1474,10 +1556,27 @@ if ($view == 'list') {
             JOIN
                 clientes c ON fv.id_cliente = c.id_cliente
             LEFT JOIN
-                direcciones_envio de ON fv.id_direccion_envio = de.id_direccion_envio -- NEW: JOIN with direcciones_envio
-            ORDER BY
-                fv.fecha_factura DESC, fv.id_factura DESC
-        ");
+                direcciones_envio de ON fv.id_direccion_envio = de.id_direccion_envio
+        ";
+
+        $params = [];
+        $where_clauses = [];
+
+        // Filter by shipping address ID if provided
+        $filter_id_direccion_envio = $_GET['id_direccion_envio'] ?? null;
+        if ($filter_id_direccion_envio) {
+            $where_clauses[] = "fv.id_direccion_envio = ?";
+            $params[] = $filter_id_direccion_envio;
+        }
+
+        if (!empty($where_clauses)) {
+            $sql .= " WHERE " . implode(" AND ", $where_clauses);
+        }
+
+        $sql .= " ORDER BY fv.fecha_factura DESC, fv.id_factura DESC";
+
+        $stmt_facturas = $pdo->prepare($sql);
+        $stmt_facturas->execute($params);
         $facturas = $stmt_facturas->fetchAll(PDO::FETCH_ASSOC);
 
         // Post-process to determine estado_retiro_calculado
@@ -1624,6 +1723,7 @@ if ($view == 'list') {
     <title>Gestión de Facturas de Ventas</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
     <style>
         /* Estilos generales */
         body {
@@ -1937,15 +2037,6 @@ if ($view == 'list') {
             max-width: 120px; /* Adjust width of input fields for discount/surcharge */
         }
         /* Justify right for financial values in header */
-        .invoice-header-financials .col-md-3 p {
-            text-align: right;
-        }
-        .invoice-header-financials .col-md-3 p strong {
-            float: left; /* Keep labels left-aligned */
-        }
-        .invoice-header-financials .col-md-3 p span {
-            display: inline-block; /* Allow span to respect text-align: right */
-        }
         /* Specific alignment for discount/surcharge input fields */
         .invoice-header-financials .d-flex .form-control {
             text-align: right; /* Justify input values to the right */
@@ -2008,10 +2099,15 @@ if ($view == 'list') {
                                 </button>
 
                                 <!-- Filter Buttons Group -->
-                                <div class="filter-btn-group d-flex flex-wrap">
-                                    <button class="btn btn-secondary filter-btn active" data-filter-type="all">Mostrar Todos</button>
-                                    <button class="btn btn-outline-warning filter-btn" data-filter-type="estado_retiro" data-filter-value="Pendiente">Pendientes de Retirada</button>
-                                    <button class="btn btn-outline-info filter-btn" data-filter-type="estado_pago" data-filter-value="pendiente">Pendientes de Cobro</button>
+                                <div class="d-flex align-items-center">
+                                    <div id="filtered-total-container" class="me-4" style="display: none;">
+                                        <h5 class="mb-0">Total Filtrado: <span id="filtered-total" class="badge bg-success fs-5">0,00 €</span></h5>
+                                    </div>
+                                    <div class="filter-btn-group d-flex flex-wrap">
+                                        <button class="btn btn-secondary filter-btn active" data-filter-type="all">Mostrar Todos</button>
+                                        <button class="btn btn-outline-warning filter-btn" data-filter-type="estado_retiro" data-filter-value="Pendiente">Pendientes de Retirada</button>
+                                        <button class="btn btn-outline-info filter-btn" data-filter-type="estado_pago" data-filter-value="pendiente">Pendientes de Cobro</button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -2137,21 +2233,16 @@ if ($view == 'list') {
                                             </div>
                                             <small class="text-danger" id="client_selection_error" style="display:none;">Por favor, seleccione un cliente de la lista.</small>
                                             <div class="mt-2">
-                                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="createNewClientFromInvoiceModal()">
+                                                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#addClientModal">
                                                     <i class="bi bi-person-plus"></i> Crear Nuevo Cliente
                                                 </button>
                                             </div>
                                         </div>
                                         <!-- NEW: Campo para Dirección de Envío con búsqueda -->
                                         <div class="mb-3" id="shippingAddressGroup" style="display: none;">
-                                            <label for="shipping_address_search_input" class="form-label">Dirección de Envío</label>
-                                            <div class="client-search-container">
-                                                <input type="text" class="form-control" id="shipping_address_search_input" placeholder="Buscar dirección de envío..." autocomplete="off">
-                                                <input type="hidden" id="id_direccion_envio_selected" name="id_direccion_envio">
-                                                <div id="shipping_address_search_results" class="client-search-results"></div>
-                                            </div>
-                                            <small class="text-danger" id="shipping_address_error" style="display:none;">Por favor, seleccione una dirección de envío.</small>
-                                            <small class="text-muted" id="no_shipping_addresses_info" style="display:none;">Este cliente no tiene direcciones de envío registradas. Se usará la dirección principal del cliente.</small>
+                                            <label for="id_direccion_envio" class="form-label">Dirección de Envío</label>
+                                            <select id="id_direccion_envio" name="id_direccion_envio" placeholder="Seleccione una dirección..."></select>
+                                            <small class="text-muted" id="no_shipping_addresses_info" style="display:none;">Este cliente no tiene direcciones de envío secundarias. Se usará la dirección principal del cliente.</small>
                                         </div>
 
                                         <div class="mb-3">
@@ -2166,6 +2257,64 @@ if ($view == 'list') {
                                     <div class="modal-footer">
                                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                                         <button type="submit" class="btn btn-primary" id="submitNewInvoiceBtn">Crear Factura</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Modal para Añadir Nuevo Cliente -->
+                    <div class="modal fade" id="addClientModal" tabindex="-1" aria-labelledby="addClientModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <form id="addClientForm">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="addClientModalLabel">Crear Nuevo Cliente</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label for="new_nombre_cliente" class="form-label">Nombre del Cliente</label>
+                                                <input type="text" class="form-control" id="new_nombre_cliente" name="nombre_cliente" required>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label for="new_nif" class="form-label">NIF</label>
+                                                <input type="text" class="form-control" id="new_nif" name="nif">
+                                            </div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="new_direccion" class="form-label">Dirección</label>
+                                            <input type="text" class="form-control" id="new_direccion" name="direccion">
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label for="new_ciudad" class="form-label">Ciudad</label>
+                                                <input type="text" class="form-control" id="new_ciudad" name="ciudad">
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label for="new_provincia" class="form-label">Provincia</label>
+                                                <input type="text" class="form-control" id="new_provincia" name="provincia">
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label for="new_codigo_postal" class="form-label">Código Postal</label>
+                                                <input type="text" class="form-control" id="new_codigo_postal" name="codigo_postal">
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label for="new_telefono" class="form-label">Teléfono</label>
+                                                <input type="text" class="form-control" id="new_telefono" name="telefono">
+                                            </div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="new_email" class="form-label">Email</label>
+                                            <input type="email" class="form-control" id="new_email" name="email">
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                        <button type="submit" class="btn btn-primary">Guardar Cliente</button>
                                     </div>
                                 </form>
                             </div>
@@ -2247,12 +2396,12 @@ if ($view == 'list') {
                                             </button>
                                         </div>
                                     </form>
-                                    <p><strong>Base Imponible Total:</strong> <span class="fs-5 text-dark"><?php echo number_format($factura_actual['total_factura'], 2, ',', '.'); ?> €</span></p>
-                                    <p><strong>Total IVA:</strong> <span class="fs-5 text-dark"><?php echo number_format($factura_actual['total_iva_factura'], 2, ',', '.'); ?> €</span></p>
+                                    <p class="d-flex justify-content-between"><strong>Base Imponible Total:</strong> <span class="fs-5 text-dark"><?php echo number_format($factura_actual['total_factura'], 2, ',', '.'); ?> €</span></p>
+                                    <p class="d-flex justify-content-between"><strong>Total IVA:</strong> <span class="fs-5 text-dark"><?php echo number_format($factura_actual['total_iva_factura'], 2, ',', '.'); ?> €</span></p>
                                 </div>
                                 <div class="col-md-3">
-                                    <p><strong>Total Factura (IVA Inc.):</strong> <span class="fs-4 text-primary"><?php echo number_format($factura_actual['total_factura_iva_incluido'], 2, ',', '.'); ?> €</span></p>
-                                    <p><strong>Saldo Pendiente:</strong> <span class="fs-5 <?php echo ($saldo_pendiente > 0) ? 'text-danger' : 'text-success'; ?>"><?php echo number_format($saldo_pendiente, 2, ',', '.'); ?> €</span></p>
+                                    <p class="d-flex justify-content-between"><strong>Total Factura (IVA Inc.):</strong> <span class="fs-4 text-primary"><?php echo number_format($factura_actual['total_factura_iva_incluido'], 2, ',', '.'); ?> €</span></p>
+                                    <p class="d-flex justify-content-between"><strong>Saldo Pendiente:</strong> <span class="fs-5 <?php echo ($saldo_pendiente > 0) ? 'text-danger' : 'text-success'; ?>"><?php echo number_format($saldo_pendiente, 2, ',', '.'); ?> €</span></p>
                                     <p><strong>Estado Pago:</strong> <span class="badge <?php echo htmlspecialchars($badge_class); ?> fs-6"><?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $factura_actual['estado_pago']))); ?></span></p>
                                     <p><strong>Estado Retiro:</strong> <span class="badge <?php echo htmlspecialchars($badge_class_retiro); ?> fs-6"><?php echo htmlspecialchars($factura_actual['estado_retiro_calculado']); ?></span></p>
                                     <?php if ($factura_actual['id_pedido_origen']): ?>
@@ -2264,6 +2413,9 @@ if ($view == 'list') {
                                 </div>
                             </div>
                             <a href="facturas_ventas.php" class="btn btn-secondary mb-3"><i class="bi bi-arrow-left"></i> Volver a la Lista</a>
+                            <button class="btn btn-warning mb-3 ms-2" data-bs-toggle="modal" data-bs-target="#editFacturaModal">
+                                <i class="bi bi-pencil"></i> Editar Factura
+                            </button>
                             <?php if ($current_parte_ruta_id): ?>
                                 <a href="partes_ruta.php?view=details&id=<?php echo htmlspecialchars($current_parte_ruta_id); ?>" class="btn btn-info mb-3 ms-2">
                                     <i class="bi bi-truck"></i> Volver a Parte de Ruta #<?php echo htmlspecialchars($current_parte_ruta_id); ?>
@@ -2576,12 +2728,52 @@ if ($view == 'list') {
                         </div>
                     </div>
 
+                    <!-- Modal para Editar Factura -->
+                    <div class="modal fade" id="editFacturaModal" tabindex="-1" aria-labelledby="editFacturaModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <form action="facturas_ventas.php" method="POST" id="editFacturaForm">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="editFacturaModalLabel">Editar Factura #<?php echo htmlspecialchars($factura_actual['id_factura']); ?></h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <input type="hidden" name="accion" value="editar_factura">
+                                        <input type="hidden" name="id_factura" value="<?php echo htmlspecialchars($factura_actual['id_factura']); ?>">
+                                        <div class="mb-3">
+                                            <label for="edit_fecha_factura" class="form-label">Fecha Factura</label>
+                                            <input type="date" class="form-control" id="edit_fecha_factura" name="fecha_factura" value="<?php echo htmlspecialchars($factura_actual['fecha_factura']); ?>" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="edit_client_search_input" class="form-label">Cliente</label>
+                                            <div class="client-search-container">
+                                                <input type="text" class="form-control" id="edit_client_search_input" placeholder="Buscar cliente por nombre, NIF, ciudad..." autocomplete="off" value="<?php echo htmlspecialchars($factura_actual['nombre_cliente']); ?>">
+                                                <input type="hidden" id="edit_id_cliente_selected" name="id_cliente" value="<?php echo htmlspecialchars($factura_actual['id_cliente']); ?>">
+                                                <div id="edit_client_search_results" class="client-search-results"></div>
+                                            </div>
+                                            <small class="text-danger" id="edit_client_selection_error" style="display:none;">Por favor, seleccione un cliente de la lista.</small>
+                                        </div>
+                                        <div class="mb-3" id="editShippingAddressGroup" style="display: none;">
+                                            <label for="edit_id_direccion_envio" class="form-label">Dirección de Envío</label>
+                                            <select id="edit_id_direccion_envio" name="id_direccion_envio" placeholder="Seleccione una dirección..."></select>
+                                            <small class="text-muted" id="edit_no_shipping_addresses_info" style="display:none;">Este cliente no tiene direcciones de envío secundarias. Se usará la dirección principal del cliente.</small>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                        <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
                 <?php endif; // Cierre del if/elseif principal ?>
             </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
     <script>
         // Mapeo de productos para acceso rápido por ID
         const productosMapJs = <?php echo json_encode(array_column($productos, null, 'id_producto')); ?>;
@@ -2714,16 +2906,6 @@ if ($view == 'list') {
             totalLineaIvaIncDisplay.textContent = totalLineaIvaInc.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
         }
 
-        // Función para redirigir a clientes.php para crear un nuevo cliente
-        function createNewClientFromInvoiceModal() {
-            const clientName = document.getElementById('client_search_input').value.trim();
-            let url = 'clientes.php?action=new';
-            if (clientName) {
-                url += '&new_client_name=' + encodeURIComponent(clientName);
-            }
-            window.location.href = url;
-        }
-
         // Wrap the entire script in an IIFE to prevent global variable conflicts
         (function() {
             let clientSearchTimeout; // Moved inside IIFE
@@ -2740,11 +2922,8 @@ if ($view == 'list') {
 
                 // NEW: Elements for shipping address selection
                 const shippingAddressGroup = document.getElementById('shippingAddressGroup');
-                const shippingAddressSearchInput = document.getElementById('shipping_address_search_input');
-                const idDireccionEnvioSelectedInput = document.getElementById('id_direccion_envio_selected');
-                const shippingAddressSearchResultsDiv = document.getElementById('shipping_address_search_results');
-                const shippingAddressError = document.getElementById('shipping_address_error');
                 const noShippingAddressesInfo = document.getElementById('no_shipping_addresses_info');
+                let tomSelectDireccion;
 
 
                 // Retirar Stock Modal elements
@@ -2775,7 +2954,7 @@ if ($view == 'list') {
                 const newInvoiceClientId = urlParams.get('new_invoice_client_id');
                 const newInvoiceClientName = urlParams.get('new_invoice_client_name'); // Get client name if passed
                 const newInvoiceOrderId = urlParams.get('new_invoice_order_id'); // Get order ID
-                // const newInvoiceParteRutaId = urlParams.get('new_invoice_parte_ruta_id'); // Not needed for JS pre-fill, handled by PHP redirect
+                const newInvoiceShippingAddressId = urlParams.get('id_direccion_envio'); // Get shipping address ID
 
                 // IMPORTANT: Only pre-fill the modal if it's NOT an automatic invoice creation from order
                 // If newInvoiceOrderId exists, PHP will handle creation and redirect, so no need to show modal here.
@@ -2785,13 +2964,14 @@ if ($view == 'list') {
                     idClienteSelectedInput.value = newInvoiceClientId;
                     clientSearchInput.value = newInvoiceClientName || ''; // Set the name in the search input
 
-                    // NEW: Load shipping addresses for the pre-selected client
-                    loadShippingAddresses(newInvoiceClientId, shippingAddressSearchInput, idDireccionEnvioSelectedInput, shippingAddressSearchResultsDiv, shippingAddressGroup, shippingAddressError, noShippingAddressesInfo);
+                    // NEW: Load shipping addresses for the pre-selected client, and pre-select if ID is available
+                    loadShippingAddresses(newInvoiceClientId, 'id_direccion_envio', shippingAddressGroup, noShippingAddressesInfo, newInvoiceShippingAddressId);
 
 
                     // Remove the parameters from the URL to avoid re-opening the modal on refresh
                     urlParams.delete('new_invoice_client_id');
                     urlParams.delete('new_invoice_client_name');
+                    urlParams.delete('id_direccion_envio'); // Clean up shipping address ID
                     const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
                     window.history.replaceState({}, document.title, newUrl);
                 }
@@ -2805,10 +2985,10 @@ if ($view == 'list') {
 
                         // NEW: Clear and hide shipping address fields when client search changes
                         shippingAddressGroup.style.display = 'none';
-                        shippingAddressSearchInput.value = '';
-                        idDireccionEnvioSelectedInput.value = '';
-                        shippingAddressSearchResultsDiv.innerHTML = '';
-                        shippingAddressError.style.display = 'none';
+                        if (tomSelectDireccion) {
+                            tomSelectDireccion.destroy();
+                            tomSelectDireccion = null;
+                        }
                         noShippingAddressesInfo.style.display = 'none';
 
 
@@ -2841,7 +3021,7 @@ if ($view == 'list') {
                                                 idClienteSelectedInput.value = this.dataset.clientId;
                                                 clientSearchResultsDiv.innerHTML = ''; // Clear results
                                                 // NEW: Load shipping addresses after client is selected
-                                                loadShippingAddresses(this.dataset.clientId, shippingAddressSearchInput, idDireccionEnvioSelectedInput, shippingAddressSearchResultsDiv, shippingAddressGroup, shippingAddressError, noShippingAddressesInfo);
+                                                loadShippingAddresses(this.dataset.clientId, 'id_direccion_envio', shippingAddressGroup, noShippingAddressesInfo);
                                             });
                                             clientSearchResultsDiv.appendChild(item);
                                         });
@@ -2879,55 +3059,37 @@ if ($view == 'list') {
                                 clientSelectionError.style.display = 'none'; // Hide error message
                             }
 
-                            // Validate shipping address selection if the group is visible AND there are addresses available
-                            if (shippingAddressGroup.style.display === 'block') {
-                                // Only validate if there are actual options to select (i.e., not "No hay direcciones...")
-                                if (!idDireccionEnvioSelectedInput.value && noShippingAddressesInfo.style.display !== 'block') {
-                                    event.preventDefault();
-                                    shippingAddressError.style.display = 'block';
-                                    isValid = false;
-                                } else {
-                                    shippingAddressError.style.display = 'none';
-                                }
-                            }
-
                             if (!isValid) {
                                 event.preventDefault(); // Ensure form is not submitted if any validation fails
                             }
                         });
-
-                        // Optional: Hide error when user starts interacting with the select again
-                        if (idDireccionEnvioSelectedInput) {
-                            idDireccionEnvioSelectedInput.addEventListener('change', function() {
-                                if (this.value) {
-                                    shippingAddressError.style.display = 'none';
-                                }
-                            });
-                        }
                     }
                 }
 
                 // NEW: Function to load and populate the shipping address search/select
-                async function loadShippingAddresses(clientId, searchInputElement, selectedIdElement, resultsDivElement, groupElement, errorElement, noInfoElement, selectedAddressId = null) {
-                    groupElement.style.display = 'block'; // Show the group container
-                    searchInputElement.value = ''; // Clear search input
-                    selectedIdElement.value = ''; // Clear selected ID
-                    resultsDivElement.innerHTML = ''; // Clear results
-                    errorElement.style.display = 'none';
+                async function loadShippingAddresses(clientId, selectId, groupElement, noInfoElement, selectedAddressId = null) {
+                    const selectElement = document.getElementById(selectId);
+                    if (!selectElement) return;
+
+                    groupElement.style.display = 'block';
                     noInfoElement.style.display = 'none';
 
+                    let tomSelect = selectElement.tomselect;
+                    if (tomSelect) {
+                        tomSelect.destroy();
+                    }
+
+                    selectElement.innerHTML = '<option value="">Cargando...</option>';
+
                     if (!clientId) {
-                        searchInputElement.placeholder = 'Seleccione un cliente primero';
+                        selectElement.innerHTML = '<option value="">Seleccione un cliente primero</option>';
                         return;
                     }
 
-                    searchInputElement.placeholder = 'Buscar dirección de envío...'; // Reset placeholder
-
                     try {
                         const formData = new FormData();
-                        formData.append('accion', 'get_shipping_addresses');
+                        formData.append('accion', 'search_shipping_addresses');
                         formData.append('id_cliente', clientId);
-                        // No search_term initially, load all for the client
 
                         const response = await fetch('facturas_ventas.php', {
                             method: 'POST',
@@ -2935,122 +3097,51 @@ if ($view == 'list') {
                         });
                         const data = await response.json();
 
-                        if (data.success) {
-                            if (data.direcciones.length > 0) {
-                                // Populate resultsDivElement with initial options
-                                data.direcciones.forEach(dir => {
-                                    const item = document.createElement('div');
-                                    item.classList.add('client-search-results-item'); // Reuse client-search-results-item class
-                                    const isPrincipalText = dir.es_principal == 1 ? ' (Principal)' : '';
-                                    item.textContent = `${dir.nombre_direccion} - ${dir.direccion}, ${dir.ciudad}${isPrincipalText}`;
-                                    item.dataset.idDireccionEnvio = dir.id_direccion_envio;
-                                    item.dataset.fullAddress = `${dir.nombre_direccion} - ${dir.direccion}, ${dir.ciudad}, ${dir.provincia} ${dir.codigo_postal}`;
-                                    item.addEventListener('click', function() {
-                                        searchInputElement.value = this.dataset.fullAddress;
-                                        selectedIdElement.value = this.dataset.idDireccionEnvio;
-                                        resultsDivElement.innerHTML = ''; // Clear results
-                                        errorElement.style.display = 'none'; // Hide error if selection is made
-                                    });
-                                    resultsDivElement.appendChild(item);
-                                });
+                        selectElement.innerHTML = ''; // Clear loading/previous options
 
-                                // Pre-select address if selectedAddressId is provided (for edit modal, though not used here for invoice)
-                                if (selectedAddressId) {
-                                    const preselectedDir = data.direcciones.find(dir => dir.id_direccion_envio == selectedAddressId);
-                                    if (preselectedDir) {
-                                        searchInputElement.value = `${preselectedDir.nombre_direccion} - ${preselectedDir.direccion}, ${preselectedDir.ciudad}, ${preselectedDir.provincia} ${preselectedDir.codigo_postal}`;
-                                        selectedIdElement.value = selectedAddressId;
-                                    }
-                                } else {
-                                    // If no specific address is selected (new invoice), try to select the principal one
-                                    const principalDir = data.direcciones.find(dir => dir.es_principal == 1);
-                                    if (principalDir) {
-                                        searchInputElement.value = `${principalDir.nombre_direccion} - ${principalDir.direccion}, ${principalDir.ciudad}, ${principalDir.provincia} ${principalDir.codigo_postal}`;
-                                        selectedIdElement.value = principalDir.id_direccion_envio;
-                                    }
-                                }
+                        if (data.success && data.direcciones.length > 0) {
+                             // Add a default non-selectable option
+                            let defaultOption = document.createElement('option');
+                            defaultOption.value = "";
+                            defaultOption.textContent = "Seleccione una dirección...";
+                            selectElement.appendChild(defaultOption);
+
+                            data.direcciones.forEach(dir => {
+                                let option = document.createElement('option');
+                                option.value = dir.id_direccion_envio;
+                                option.textContent = `${dir.nombre_direccion} - ${dir.direccion}, ${dir.ciudad}`;
+                                selectElement.appendChild(option);
+                            });
+
+                            // Set selected value
+                            if (selectedAddressId) {
+                                selectElement.value = selectedAddressId;
                             } else {
-                                searchInputElement.value = ''; // Clear any previous value
-                                selectedIdElement.value = ''; // Ensure hidden input is empty
-                                resultsDivElement.innerHTML = ''; // Clear results
-                                noInfoElement.style.display = 'block';
+                                const principal = data.direcciones.find(a => a.es_principal == 1);
+                                if (principal) {
+                                    selectElement.value = principal.id_direccion_envio;
+                                }
                             }
                         } else {
-                            searchInputElement.value = '';
-                            selectedIdElement.value = '';
-                            resultsDivElement.innerHTML = `<div class="client-search-results-item text-danger">Error al cargar: ${data.message}</div>`;
-                            errorElement.style.display = 'block';
-                            noInfoElement.style.display = 'none';
+                            noInfoElement.style.display = 'block';
+                             let defaultOption = document.createElement('option');
+                            defaultOption.value = "";
+                            defaultOption.textContent = "No hay direcciones disponibles";
+                            selectElement.appendChild(defaultOption);
                         }
+
+                        new TomSelect(selectElement,{
+                            create: false,
+                            sortField: {
+                                field: "text",
+                                direction: "asc"
+                            }
+                        });
+
                     } catch (error) {
                         console.error('Error fetching shipping addresses:', error);
-                        searchInputElement.value = '';
-                        selectedIdElement.value = '';
-                        resultsDivElement.innerHTML = '<div class="client-search-results-item text-danger">Error al cargar direcciones</div>';
-                        errorElement.style.display = 'block';
-                        noInfoElement.style.display = 'none';
+                        selectElement.innerHTML = '<option value="">Error al cargar direcciones</option>';
                     }
-                }
-
-                // NEW: Event listeners for shipping address search inputs
-                if (shippingAddressSearchInput) {
-                    shippingAddressSearchInput.addEventListener('input', function() {
-                        const searchTerm = this.value.trim();
-                        const currentClientId = idClienteSelectedInput.value;
-                        idDireccionEnvioSelectedInput.value = ''; // Clear selected ID on new search
-                        shippingAddressError.style.display = 'none'; // Hide error message
-                        noShippingAddressesInfo.style.display = 'none'; // Hide info message
-
-                        clearTimeout(shippingAddressSearchTimeout);
-                        if (searchTerm.length > 1 && currentClientId) { // Search after 2 characters and if client is selected
-                            shippingAddressSearchTimeout = setTimeout(async () => {
-                                try {
-                                    const formData = new FormData();
-                                    formData.append('accion', 'search_shipping_addresses'); // Use new action
-                                    formData.append('id_cliente', currentClientId);
-                                    formData.append('search_term', searchTerm);
-
-                                    const response = await fetch('facturas_ventas.php', {
-                                        method: 'POST',
-                                        body: formData
-                                    });
-                                    const data = await response.json();
-
-                                    shippingAddressSearchResultsDiv.innerHTML = '';
-                                    if (data.success && data.direcciones.length > 0) {
-                                        data.direcciones.forEach(dir => {
-                                            const item = document.createElement('div');
-                                            item.classList.add('client-search-results-item');
-                                            const isPrincipalText = dir.es_principal == 1 ? ' (Principal)' : '';
-                                            item.textContent = `${dir.nombre_direccion} - ${dir.direccion}, ${dir.ciudad}${isPrincipalText}`;
-                                            item.dataset.idDireccionEnvio = dir.id_direccion_envio;
-                                            item.dataset.fullAddress = `${dir.nombre_direccion} - ${dir.direccion}, ${dir.ciudad}, ${dir.provincia} ${dir.codigo_postal}`;
-                                            item.addEventListener('click', function() {
-                                                shippingAddressSearchInput.value = this.dataset.fullAddress;
-                                                idDireccionEnvioSelectedInput.value = this.dataset.idDireccionEnvio;
-                                                shippingAddressSearchResultsDiv.innerHTML = '';
-                                                shippingAddressError.style.display = 'none';
-                                            });
-                                            shippingAddressSearchResultsDiv.appendChild(item);
-                                        });
-                                    } else {
-                                        shippingAddressSearchResultsDiv.innerHTML = '<div class="client-search-results-item text-muted">No se encontraron direcciones.</div>';
-                                    }
-                                } catch (error) {
-                                    console.error('Error searching shipping addresses:', error);
-                                    shippingAddressSearchResultsDiv.innerHTML = '<div class="client-search-results-item text-danger">Error al buscar direcciones.</div>';
-                                }
-                            }, 300);
-                        } else {
-                            shippingAddressSearchResultsDiv.innerHTML = '';
-                        }
-                    });
-
-                    document.addEventListener('click', function(event) {
-                        if (!shippingAddressSearchInput.contains(event.target) && !shippingAddressSearchResultsDiv.contains(event.target)) {
-                            shippingAddressSearchResultsDiv.innerHTML = '';
-                        }
-                    });
                 }
 
 
@@ -3160,57 +3251,198 @@ if ($view == 'list') {
                     });
                 }
 
-                // --- Filter Buttons Logic ---
-                filterButtons.forEach(button => {
-                    button.addEventListener('click', function() {
-                        // Remove active class from all buttons
-                        filterButtons.forEach(btn => {
-                            btn.classList.remove('active');
-                            // Revert to outline for non-active specific filter buttons
-                            if (btn.dataset.filterType !== 'all') {
-                                btn.classList.add(`btn-outline-${btn.dataset.filterType === 'estado_retiro' ? 'warning' : 'info'}`);
-                                btn.classList.remove(`btn-${btn.dataset.filterType === 'estado_retiro' ? 'warning' : 'info'}`);
+                // --- Edit Invoice Modal ---
+                const editFacturaModal = document.getElementById('editFacturaModal');
+                if (editFacturaModal) {
+                    const editClientSearchInput = document.getElementById('edit_client_search_input');
+                    const editIdClienteSelectedInput = document.getElementById('edit_id_cliente_selected');
+                    const editClientSearchResultsDiv = document.getElementById('edit_client_search_results');
+                    const editClientSelectionError = document.getElementById('edit_client_selection_error');
+                    const editFacturaForm = document.getElementById('editFacturaForm');
+                    const editShippingAddressGroup = document.getElementById('editShippingAddressGroup');
+                    const editNoShippingAddressesInfo = document.getElementById('edit_no_shipping_addresses_info');
+                    let tomSelectEditDireccion;
+
+                    // Client search functionality for the edit modal
+                    if (editClientSearchInput) {
+                        editClientSearchInput.addEventListener('input', function() {
+                            const searchTerm = this.value.trim();
+                            editIdClienteSelectedInput.value = '';
+                            if(editClientSelectionError) editClientSelectionError.style.display = 'none';
+
+                            // Clear shipping address fields when client changes
+                            if (tomSelectEditDireccion) {
+                                tomSelectEditDireccion.destroy();
+                                tomSelectEditDireccion = null;
+                            }
+                            editNoShippingAddressesInfo.style.display = 'none';
+                            editShippingAddressGroup.style.display = 'none';
+
+
+                            clearTimeout(clientSearchTimeout);
+                            if (searchTerm.length > 1) {
+                                clientSearchTimeout = setTimeout(async () => {
+                                    try {
+                                        const formData = new FormData();
+                                        formData.append('accion', 'search_clients');
+                                        formData.append('search_term', searchTerm);
+
+                                        const response = await fetch('facturas_ventas.php', { method: 'POST', body: formData });
+                                        const clients = await response.json();
+
+                                        editClientSearchResultsDiv.innerHTML = '';
+                                        if (clients.error) {
+                                            editClientSearchResultsDiv.innerHTML = `<div class="client-search-results-item text-danger">${clients.error}</div>`;
+                                        } else if (clients.length > 0) {
+                                            clients.forEach(client => {
+                                                const item = document.createElement('div');
+                                                item.classList.add('client-search-results-item');
+                                                item.textContent = `${client.nombre_cliente} (${client.nif || 'N/A'}) - ${client.ciudad}`;
+                                                item.dataset.clientId = client.id_cliente;
+                                                item.dataset.clientName = client.nombre_cliente;
+                                                item.addEventListener('click', function() {
+                                                    editClientSearchInput.value = this.dataset.clientName;
+                                                    editIdClienteSelectedInput.value = this.dataset.clientId;
+                                                    editClientSearchResultsDiv.innerHTML = '';
+                                                    loadShippingAddresses(this.dataset.clientId, 'edit_id_direccion_envio', editShippingAddressGroup, editNoShippingAddressesInfo);
+                                                });
+                                                editClientSearchResultsDiv.appendChild(item);
+                                            });
+                                        } else {
+                                            editClientSearchResultsDiv.innerHTML = '<div class="client-search-results-item text-muted">No se encontraron clientes.</div>';
+                                        }
+                                    } catch (error) {
+                                        console.error('Error searching clients:', error);
+                                        editClientSearchResultsDiv.innerHTML = '<div class="client-search-results-item text-danger">Error al buscar.</div>';
+                                    }
+                                }, 300);
                             } else {
-                                // Revert 'Mostrar Todos' to outline-secondary if not active
-                                btn.classList.add('btn-secondary');
-                                btn.classList.remove('btn-primary'); // Assuming it was primary when active
+                                editClientSearchResultsDiv.innerHTML = '';
                             }
                         });
 
-                        // Add active class to the clicked button and apply solid style
-                        this.classList.add('active');
-                        if (this.dataset.filterType !== 'all') {
-                            this.classList.remove(`btn-outline-${this.dataset.filterType === 'estado_retiro' ? 'warning' : 'info'}`);
-                            this.classList.add(`btn-${this.dataset.filterType === 'estado_retiro' ? 'warning' : 'info'}`);
-                        } else {
-                            this.classList.remove('btn-secondary');
-                            this.classList.add('btn-primary');
-                        }
+                        document.addEventListener('click', function(event) {
+                            if (editClientSearchResultsDiv && editClientSearchInput && !editClientSearchInput.contains(event.target) && !editClientSearchResultsDiv.contains(event.target)) {
+                                editClientSearchResultsDiv.innerHTML = '';
+                            }
+                        });
+                    }
 
+                    // Load addresses when the modal is shown
+                    editFacturaModal.addEventListener('show.bs.modal', () => {
+                        const currentClientId = editIdClienteSelectedInput.value;
+                        const currentShippingAddressId = <?php echo json_encode($factura_actual['id_direccion_envio'] ?? null); ?>;
+                        loadShippingAddresses(currentClientId, 'edit_id_direccion_envio', editShippingAddressGroup, editNoShippingAddressesInfo, currentShippingAddressId);
+                    });
+
+                    if (editFacturaForm) {
+                        editFacturaForm.addEventListener('submit', function(event) {
+                            if (!editIdClienteSelectedInput.value) {
+                                event.preventDefault();
+                                if(editClientSelectionError) editClientSelectionError.style.display = 'block';
+                            } else {
+                                if(editClientSelectionError) editClientSelectionError.style.display = 'none';
+                            }
+                        });
+                    }
+                }
+
+                // --- Filter Buttons Logic ---
+                const totalContainer = document.getElementById('filtered-total-container');
+                const totalElement = document.getElementById('filtered-total');
+
+                filterButtons.forEach(button => {
+                    button.addEventListener('click', function() {
+                        // ... (código de manejo de clases de botón activo) ...
 
                         const filterType = this.dataset.filterType;
                         const filterValue = this.dataset.filterValue;
+                        let total = 0;
+                        let hasVisibleRows = false;
 
                         Array.from(invoicesTableBody.children).forEach(row => {
                             let showRow = true;
-
                             if (filterType === 'all') {
                                 showRow = true;
                             } else if (filterType === 'estado_retiro') {
                                 const estadoRetiro = row.dataset.estadoRetiro;
-                                showRow = (estadoRetiro === filterValue || estadoRetiro === 'Parcial'); // Show 'Pendiente' and 'Parcial' for withdrawal
+                                showRow = (estadoRetiro === filterValue || estadoRetiro === 'Parcial');
                             } else if (filterType === 'estado_pago') {
                                 const estadoPago = row.dataset.estadoPago;
-                                showRow = (estadoPago === filterValue || estadoPago === 'parcialmente_pagada'); // Show 'pendiente' and 'parcialmente_pagada' for payment
+                                showRow = (estadoPago === filterValue || estadoPago === 'parcialmente_pagada');
                             }
 
                             row.style.display = showRow ? '' : 'none';
+
+                            if (showRow) {
+                                hasVisibleRows = true;
+                                const totalCell = row.cells[4]; // 5th cell is "Total (IVA Inc.)"
+                                if (totalCell) {
+                                    const cellText = totalCell.textContent.trim();
+                                    // Convert currency string "1.234,56 €" to a number
+                                    const numericValue = parseFloat(cellText.replace(/\./g, '').replace(',', '.').replace('€', ''));
+                                    if (!isNaN(numericValue)) {
+                                        total += numericValue;
+                                    }
+                                }
+                            }
                         });
+
+                        // Update and show/hide the total container
+                        if (filterType !== 'all' && hasVisibleRows) {
+                            totalElement.textContent = total.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+                            totalContainer.style.display = 'block';
+                        } else {
+                            totalContainer.style.display = 'none';
+                        }
                     });
                 });
 
                 // Trigger "Mostrar Todos" on initial load to ensure all are visible and button is active
                 document.querySelector('.filter-btn[data-filter-type="all"]').click();
+
+                // --- Add Client Modal Logic ---
+                const addClientForm = document.getElementById('addClientForm');
+                if (addClientForm) {
+                    addClientForm.addEventListener('submit', async function(event) {
+                        event.preventDefault();
+                        const formData = new FormData(addClientForm);
+                        formData.append('accion', 'add_client_from_modal');
+
+                        try {
+                            const response = await fetch('facturas_ventas.php', {
+                                method: 'POST',
+                                body: formData
+                            });
+                            const result = await response.json();
+
+                            if (result.success) {
+                                // Close the 'Add Client' modal
+                                const addClientModal = bootstrap.Modal.getInstance(document.getElementById('addClientModal'));
+                                addClientModal.hide();
+
+                                // Populate the new client data in the 'New Invoice' modal
+                                document.getElementById('client_search_input').value = result.new_client.nombre_cliente;
+                                document.getElementById('id_cliente_selected').value = result.new_client.id_cliente;
+
+                                // Hide client search results and error messages
+                                if(clientSearchResultsDiv) clientSearchResultsDiv.innerHTML = '';
+                                if(clientSelectionError) clientSelectionError.style.display = 'none';
+
+                                // Optionally, show a success message (e.g., using a toast notification)
+                                alert(result.message);
+
+                                // Clear the form for the next time
+                                addClientForm.reset();
+                            } else {
+                                alert('Error: ' + result.message);
+                            }
+                        } catch (error) {
+                            console.error('Error creating client:', error);
+                            alert('Hubo un error de red al crear el cliente.');
+                        }
+                    });
+                }
 
             });
         })(); // End of IIFE

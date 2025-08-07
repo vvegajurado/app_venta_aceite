@@ -877,6 +877,27 @@ try {
                         <input type="hidden" name="id_cliente" id="id_cliente_direccion_envio">
                         <input type="hidden" name="id_direccion_envio" id="id_direccion_envio">
 
+                        <!-- Acciones para la dirección de envío -->
+                        <div class="card mb-3" id="shipping_address_actions_card" style="display:none;">
+                            <div class="card-header bg-secondary text-white">
+                                Acciones para esta Dirección
+                            </div>
+                            <div class="card-body">
+                                <div class="d-flex flex-wrap gap-2 justify-content-center">
+                                    <button type="button" class="btn btn-info" id="btn_view_invoices_address" title="Ver Facturas de esta Dirección">
+                                        <i class="bi bi-receipt"></i> Ver Facturas
+                                    </button>
+                                    <button type="button" class="btn btn-primary" id="btn_new_invoice_address" title="Crear Factura para esta Dirección">
+                                        <i class="bi bi-file-earmark-plus"></i> Nueva Factura
+                                    </button>
+                                    <button type="button" class="btn btn-success" id="btn_new_order_address" title="Crear Pedido para esta Dirección">
+                                        <i class="bi bi-cart-plus"></i> Nuevo Pedido
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <hr id="shipping_address_actions_hr" style="display:none;" class="my-4">
+
                         <div class="mb-3">
                             <label for="nombre_direccion" class="form-label">Nombre de la Dirección <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" id="nombre_direccion" name="nombre_direccion" required>
@@ -1431,6 +1452,21 @@ try {
             window.location.href = 'pedidos.php?new_invoice_client_id=' + clientId + '&new_invoice_client_name=' + encodeURIComponent(clientName) + '&open_modal=true';
         }
 
+        // --- Nuevas funciones para acciones de dirección de envío ---
+        function viewInvoicesForAddress(shippingAddressId) {
+            window.location.href = `facturas_ventas.php?id_direccion_envio=${shippingAddressId}`;
+        }
+
+        function createNewInvoiceForAddress(clientId, shippingAddressId) {
+            const clientName = document.getElementById('nombre_cliente').value;
+            window.location.href = `facturas_ventas.php?new_invoice_client_id=${clientId}&new_invoice_client_name=${encodeURIComponent(clientName)}&id_direccion_envio=${shippingAddressId}`;
+        }
+
+        function createNewOrderForAddress(clientId, shippingAddressId) {
+            const clientName = document.getElementById('nombre_cliente').value;
+            window.location.href = `pedidos.php?new_invoice_client_id=${clientId}&new_invoice_client_name=${encodeURIComponent(clientName)}&id_direccion_envio=${shippingAddressId}&open_modal=true`;
+        }
+
         // Función para mostrar un mensaje personalizado (reemplazo de alert y confirm)
         function showCustomAlert(message, type = 'info', callback = null) {
             const alertContainer = document.querySelector('.container-fluid');
@@ -1607,6 +1643,8 @@ try {
             const modal = new bootstrap.Modal(document.getElementById('addEditDireccionEnvioModal'));
             const form = document.getElementById('direccionEnvioForm');
             const modalLabel = document.getElementById('addEditDireccionEnvioModalLabel');
+            const actionsCard = document.getElementById('shipping_address_actions_card');
+            const actionsHr = document.getElementById('shipping_address_actions_hr');
 
             // Resetear el formulario
             form.reset();
@@ -1632,6 +1670,9 @@ try {
 
             if (direccion) {
                 modalLabel.textContent = 'Editar Dirección de Envío';
+                actionsCard.style.display = 'block';
+                actionsHr.style.display = 'block';
+
                 document.getElementById('accion_direccion_envio').value = 'editar_direccion_envio';
                 document.getElementById('id_direccion_envio').value = direccion.id_direccion_envio;
                 document.getElementById('nombre_direccion').value = direccion.nombre_direccion;
@@ -1658,8 +1699,16 @@ try {
                         mapEnvio.setZoom(15);
                     }
                 }
+
+                // Asignar acciones a los botones
+                document.getElementById('btn_view_invoices_address').onclick = () => viewInvoicesForAddress(direccion.id_direccion_envio);
+                document.getElementById('btn_new_invoice_address').onclick = () => createNewInvoiceForAddress(direccion.id_cliente, direccion.id_direccion_envio);
+                document.getElementById('btn_new_order_address').onclick = () => createNewOrderForAddress(direccion.id_cliente, direccion.id_direccion_envio);
+
             } else {
                 modalLabel.textContent = 'Añadir Nueva Dirección de Envío';
+                actionsCard.style.display = 'none';
+                actionsHr.style.display = 'none';
             }
             modal.show();
         }

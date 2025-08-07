@@ -527,6 +527,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit();
                 break;
 
+            case 'add_client_from_modal':
+                header('Content-Type: application/json');
+                try {
+                    $nombre_cliente = $_POST['nombre_cliente'] ?? '';
+                    if (empty($nombre_cliente)) {
+                        throw new Exception("El nombre del cliente es obligatorio.");
+                    }
+
+                    $stmt = $pdo->prepare("
+                        INSERT INTO clientes (nombre_cliente, nif, telefono, email)
+                        VALUES (?, ?, ?, ?)
+                    ");
+                    $stmt->execute([
+                        strtoupper($nombre_cliente),
+                        strtoupper($_POST['nif'] ?? null),
+                        strtoupper($_POST['telefono'] ?? null),
+                        strtoupper($_POST['email'] ?? null)
+                    ]);
+                    $new_client_id = $pdo->lastInsertId();
+
+                    if ($in_transaction) $pdo->commit();
+
+                    echo json_encode([
+                        'success' => true,
+                        'message' => 'Cliente creado con éxito.',
+                        'new_client' => [
+                            'id_cliente' => $new_client_id,
+                            'nombre_cliente' => $nombre_cliente,
+                            'nif' => strtoupper($_POST['nif'] ?? null),
+                            'telefono' => strtoupper($_POST['telefono'] ?? null),
+                            'email' => strtoupper($_POST['email'] ?? null)
+                        ]
+                    ]);
+
+                } catch (Exception $e) {
+                    if ($in_transaction) $pdo->rollBack();
+                    echo json_encode(['success' => false, 'message' => 'Error al crear cliente: ' . $e->getMessage()]);
+                }
+                exit();
+                break;
+
             case 'search_clients':
                
                 header('Content-Type: application/json');
@@ -1973,15 +2014,75 @@ $new_invoice_client_name = $_GET['new_invoice_client_name'] ?? '';
         // NEW FUNCTION: Redirect to clientes.php to create a new client from the order modal
         function createNewClientFromOrderModal() {
             const clientName = document.getElementById('client_search_input').value.trim();
-            let url = 'clientes.php?action=new';
-            if (clientName) {
-                url += '&new_client_name=' + encodeURIComponent(clientName);
+            document.getElementById('addClientForm').reset(); // Reset form
+            const errorDiv = document.getElementById('addClientError');
+            if(errorDiv) {
+                errorDiv.style.display = 'none'; // Hide error
+                errorDiv.textContent = '';
             }
-            window.location.href = url;
+            document.getElementById('new_client_nombre').value = clientName; // Pre-fill name
+            const addClientModal = new bootstrap.Modal(document.getElementById('addClientModal'));
+            addClientModal.show();
         }
 
         // Wrap the entire script in an IIFE to prevent global variable conflicts
         (function() {
+            // Add Client Form Submission
+            const addClientForm = document.getElementById('addClientForm');
+            if (addClientForm) {
+                addClientForm.addEventListener('submit', async function(event) {
+                    event.preventDefault();
+                    const addClientErrorDiv = document.getElementById('addClientError');
+                    addClientErrorDiv.style.display = 'none';
+
+                    const formData = new FormData();
+                    formData.append('accion', 'add_client_from_modal');
+                    formData.append('nombre_cliente', document.getElementById('new_client_nombre').value);
+                    formData.append('nif', document.getElementById('new_client_nif').value);
+                    formData.append('telefono', document.getElementById('new_client_telefono').value);
+                    formData.append('email', document.getElementById('new_client_email').value);
+
+                    try {
+                        const response = await fetch('pedidos.php', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await response.json();
+
+                        if (data.success && data.cliente) {
+                            const newClient = data.cliente;
+
+                            clientesMapJs[newClient.id_cliente] = {
+                                nombre_cliente: newClient.nombre_cliente,
+                                nif: newClient.nif,
+                                telefono: newClient.telefono,
+                                email: newClient.email,
+                                direcciones_envio: []
+                            };
+
+                            const clientSearchInput = document.getElementById('client_search_input');
+                            const idClienteSelectedInput = document.getElementById('id_cliente_selected');
+                            clientSearchInput.value = newClient.nombre_cliente;
+                            idClienteSelectedInput.value = newClient.id_cliente;
+
+                            const addClientModal = bootstrap.Modal.getInstance(document.getElementById('addClientModal'));
+                            addClientModal.hide();
+
+                            document.getElementById('shippingAddressGroup').style.display = 'none';
+
+                            showCustomModal('Cliente Creado', 'Cliente "' + newClient.nombre_cliente + '" creado y seleccionado con éxito.', 'success');
+
+                        } else {
+                            addClientErrorDiv.textContent = data.message || 'Error desconocido al crear el cliente.';
+                            addClientErrorDiv.style.display = 'block';
+                        }
+                    } catch (error) {
+                        console.error('Error creating client via AJAX:', error);
+                        addClientErrorDiv.textContent = 'Error de red o del servidor. Por favor, inténtelo de nuevo.';
+                        addClientErrorDiv.style.display = 'block';
+                    }
+                });
+            }
             let clientSearchTimeout; // Moved inside IIFE
             let shippingAddressSearchTimeout; // NEW: Timeout for shipping address search
 
@@ -2123,30 +2224,40 @@ $new_invoice_client_name = $_GET['new_invoice_client_name'] ?? '';
                     });
                 }
 
-                // If a client ID was passed to pre-fill the new order modal
-                const urlParams = new URLSearchParams(window.location.search); // Declared once here
+                // Consolidated logic for pre-filling and opening the modal
+                const urlParams = new URLSearchParams(window.location.search);
                 const newInvoiceClientId = urlParams.get('new_invoice_client_id');
                 const newInvoiceClientName = urlParams.get('new_invoice_client_name');
-                const openModalParam = urlParams.get('open_modal'); // Get the new parameter
+                const openModalParam = urlParams.get('open_modal');
+                const newInvoiceShippingAddressId = urlParams.get('id_direccion_envio');
 
                 if (newInvoiceClientId && newInvoiceClientName) {
-                    // Asegurarse de que el cliente exista en nuestros datos cargados
                     if (clientesMapJs[newInvoiceClientId]) {
                         const clientInfo = clientesMapJs[newInvoiceClientId];
-                        // Formatear el nombre del cliente de la misma manera que el datalist
-                        // Decodificar el nombre para asegurar que caracteres especiales se muestren correctamente
                         const clientDisplayValue = `${decodeURIComponent(newInvoiceClientName)} (${clientInfo.nif || 'N/A'})`;
                         
-                        if (clientSearchInput) { // Check if element exists before accessing
+                        if (clientSearchInput) {
                             clientSearchInput.value = clientDisplayValue;
                         }
-                        if (idClienteSelectedInput) { // Check if element exists before accessing
+                        if (idClienteSelectedInput) {
                             idClienteSelectedInput.value = newInvoiceClientId;
-                            // MODIFICACIÓN: Cargar direcciones de envío al precargar cliente
-                            loadShippingAddresses(newInvoiceClientId, shippingAddressSearchInput, idDireccionEnvioSelectedInput, shippingAddressSearchResultsDiv, shippingAddressGroup, shippingAddressError, noShippingAddressesInfo);
+                            loadShippingAddresses(newInvoiceClientId, shippingAddressSearchInput, idDireccionEnvioSelectedInput, shippingAddressSearchResultsDiv, shippingAddressGroup, shippingAddressError, noShippingAddressesInfo, newInvoiceShippingAddressId);
                         }
                     }
                 }
+
+                if (openModalParam === 'true') {
+                    const addPedidoModal = new bootstrap.Modal(document.getElementById('addPedidoModal'));
+                    addPedidoModal.show();
+                    // Clean up URL parameters after using them
+                    urlParams.delete('open_modal');
+                    urlParams.delete('new_invoice_client_id');
+                    urlParams.delete('new_invoice_client_name');
+                    urlParams.delete('id_direccion_envio');
+                    const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+                    window.history.replaceState(null, '', newUrl);
+                }
+
 
                 // Initial state for new order modal delivery type fields
                 if (newPedidoTipoEntregaSelect) {
@@ -2892,5 +3003,42 @@ $new_invoice_client_name = $_GET['new_invoice_client_name'] ?? '';
             });
         })(); // End of IIFE
     </script>
+
+    <!-- Modal para Crear Nuevo Cliente Rápidamente -->
+    <div class="modal fade" id="addClientModal" tabindex="-1" aria-labelledby="addClientModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form id="addClientForm">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="addClientModalLabel">Crear Nuevo Cliente</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="new_client_nombre" class="form-label">Nombre Cliente <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="new_client_nombre" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="new_client_nif" class="form-label">NIF</label>
+                            <input type="text" class="form-control" id="new_client_nif">
+                        </div>
+                        <div class="mb-3">
+                            <label for="new_client_telefono" class="form-label">Teléfono</label>
+                            <input type="text" class="form-control" id="new_client_telefono">
+                        </div>
+                        <div class="mb-3">
+                            <label for="new_client_email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="new_client_email">
+                        </div>
+                        <div id="addClientError" class="alert alert-danger" style="display:none;"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Guardar Cliente</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
