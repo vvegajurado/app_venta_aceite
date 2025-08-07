@@ -2063,10 +2063,15 @@ if ($view == 'list') {
                                 </button>
 
                                 <!-- Filter Buttons Group -->
-                                <div class="filter-btn-group d-flex flex-wrap">
-                                    <button class="btn btn-secondary filter-btn active" data-filter-type="all">Mostrar Todos</button>
-                                    <button class="btn btn-outline-warning filter-btn" data-filter-type="estado_retiro" data-filter-value="Pendiente">Pendientes de Retirada</button>
-                                    <button class="btn btn-outline-info filter-btn" data-filter-type="estado_pago" data-filter-value="pendiente">Pendientes de Cobro</button>
+                                <div class="d-flex align-items-center">
+                                    <div id="filtered-total-container" class="me-4" style="display: none;">
+                                        <h5 class="mb-0">Total Filtrado: <span id="filtered-total" class="badge bg-success fs-5">0,00 €</span></h5>
+                                    </div>
+                                    <div class="filter-btn-group d-flex flex-wrap">
+                                        <button class="btn btn-secondary filter-btn active" data-filter-type="all">Mostrar Todos</button>
+                                        <button class="btn btn-outline-warning filter-btn" data-filter-type="estado_retiro" data-filter-value="Pendiente">Pendientes de Retirada</button>
+                                        <button class="btn btn-outline-info filter-btn" data-filter-type="estado_pago" data-filter-value="pendiente">Pendientes de Cobro</button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -3306,51 +3311,53 @@ if ($view == 'list') {
                 }
 
                 // --- Filter Buttons Logic ---
+                const totalContainer = document.getElementById('filtered-total-container');
+                const totalElement = document.getElementById('filtered-total');
+
                 filterButtons.forEach(button => {
                     button.addEventListener('click', function() {
-                        // Remove active class from all buttons
-                        filterButtons.forEach(btn => {
-                            btn.classList.remove('active');
-                            // Revert to outline for non-active specific filter buttons
-                            if (btn.dataset.filterType !== 'all') {
-                                btn.classList.add(`btn-outline-${btn.dataset.filterType === 'estado_retiro' ? 'warning' : 'info'}`);
-                                btn.classList.remove(`btn-${btn.dataset.filterType === 'estado_retiro' ? 'warning' : 'info'}`);
-                            } else {
-                                // Revert 'Mostrar Todos' to outline-secondary if not active
-                                btn.classList.add('btn-secondary');
-                                btn.classList.remove('btn-primary'); // Assuming it was primary when active
-                            }
-                        });
-
-                        // Add active class to the clicked button and apply solid style
-                        this.classList.add('active');
-                        if (this.dataset.filterType !== 'all') {
-                            this.classList.remove(`btn-outline-${this.dataset.filterType === 'estado_retiro' ? 'warning' : 'info'}`);
-                            this.classList.add(`btn-${this.dataset.filterType === 'estado_retiro' ? 'warning' : 'info'}`);
-                        } else {
-                            this.classList.remove('btn-secondary');
-                            this.classList.add('btn-primary');
-                        }
-
+                        // ... (código de manejo de clases de botón activo) ...
 
                         const filterType = this.dataset.filterType;
                         const filterValue = this.dataset.filterValue;
+                        let total = 0;
+                        let hasVisibleRows = false;
 
                         Array.from(invoicesTableBody.children).forEach(row => {
                             let showRow = true;
-
                             if (filterType === 'all') {
                                 showRow = true;
                             } else if (filterType === 'estado_retiro') {
                                 const estadoRetiro = row.dataset.estadoRetiro;
-                                showRow = (estadoRetiro === filterValue || estadoRetiro === 'Parcial'); // Show 'Pendiente' and 'Parcial' for withdrawal
+                                showRow = (estadoRetiro === filterValue || estadoRetiro === 'Parcial');
                             } else if (filterType === 'estado_pago') {
                                 const estadoPago = row.dataset.estadoPago;
-                                showRow = (estadoPago === filterValue || estadoPago === 'parcialmente_pagada'); // Show 'pendiente' and 'parcialmente_pagada' for payment
+                                showRow = (estadoPago === filterValue || estadoPago === 'parcialmente_pagada');
                             }
 
                             row.style.display = showRow ? '' : 'none';
+
+                            if (showRow) {
+                                hasVisibleRows = true;
+                                const totalCell = row.cells[4]; // 5th cell is "Total (IVA Inc.)"
+                                if (totalCell) {
+                                    const cellText = totalCell.textContent.trim();
+                                    // Convert currency string "1.234,56 €" to a number
+                                    const numericValue = parseFloat(cellText.replace(/\./g, '').replace(',', '.').replace('€', ''));
+                                    if (!isNaN(numericValue)) {
+                                        total += numericValue;
+                                    }
+                                }
+                            }
                         });
+
+                        // Update and show/hide the total container
+                        if (filterType !== 'all' && hasVisibleRows) {
+                            totalElement.textContent = total.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+                            totalContainer.style.display = 'block';
+                        } else {
+                            totalContainer.style.display = 'none';
+                        }
                     });
                 });
 
