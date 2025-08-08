@@ -7,26 +7,29 @@ $fecha_inicio = $_GET['fecha_inicio'] ?? date('Y-m-01');
 $fecha_fin = $_GET['fecha_fin'] ?? date('Y-m-d');
 
 // Configurar cabeceras para la descarga del archivo Excel
-header('Content-Type: application/vnd.ms-excel');
-header('Content-Disposition: attachment;filename="informe_totales_diarios_facturas_' . $fecha_inicio . '_a_' . $fecha_fin . '.xls"');
+header('Content-Type: text/csv; charset=UTF-8');
+header('Content-Disposition: attachment;filename="informe_totales_diarios_facturas_' . $fecha_inicio . '_a_' . $fecha_fin . '.csv"');
 header('Cache-Control: max-age=0');
 
 // Abrir el flujo de salida para escribir en el archivo Excel
 $output = fopen('php://output', 'w');
 
+// Añadir BOM de UTF-8 para compatibilidad con Excel
+fwrite($output, "\xEF\xBB\xBF");
+
 // Escribir la cabecera del informe
-fputcsv($output, [utf8_decode('Informe de Totales Diarios de Facturas')], "\t");
-fputcsv($output, [utf8_decode('Periodo: ' . date('d/m/Y', strtotime($fecha_inicio)) . ' al ' . date('d/m/Y', strtotime($fecha_fin)))], "\t");
-fputcsv($output, [], "\t"); // Línea en blanco
+fwrite($output, "Informe de Totales Diarios de Facturas\n");
+fwrite($output, 'Periodo: ' . date('d/m/Y', strtotime($fecha_inicio)) . ' al ' . date('d/m/Y', strtotime($fecha_fin)) . "\n");
+fwrite($output, "\n"); // Línea en blanco
 
 // Escribir las cabeceras de la tabla
 $headers = [
     'Fecha',
-    utf8_decode('Total Base Imponible'),
+    'Total Base Imponible',
     'Total IVA',
     'Total Factura'
 ];
-fputcsv($output, array_map('utf8_decode', $headers), "\t");
+fwrite($output, implode(";", $headers) . "\n");
 
 $report_data = [];
 $total_base_imponible_general = 0;
@@ -68,21 +71,21 @@ try {
             number_format($row['total_iva'], 2, ',', ''), // Usar coma para decimales
             number_format($row['total_factura'], 2, ',', '') // Usar coma para decimales
         ];
-        fputcsv($output, $row_data, "\t");
+        fwrite($output, implode(";", $row_data) . "\n");
     }
 
     // Escribir la fila de totales generales
-    fputcsv($output, [], "\t"); // Línea en blanco antes de los totales
+    fwrite($output, "\n"); // Línea en blanco antes de los totales
     $total_row_data = [
-        utf8_decode('TOTAL GENERAL:'),
+        'TOTAL GENERAL:',
         number_format($total_base_imponible_general, 2, ',', ''),
         number_format($total_iva_general, 2, ',', ''),
         number_format($total_factura_general, 2, ',', '')
     ];
-    fputcsv($output, $total_row_data, "\t");
+    fwrite($output, implode(";", $total_row_data) . "\n");
 
 } catch (PDOException $e) {
-    fputcsv($output, [utf8_decode('Error al generar el informe: ' . $e->getMessage())], "\t");
+    fwrite($output, 'Error al generar el informe: ' . $e->getMessage() . "\n");
 }
 
 // Cerrar el flujo de salida

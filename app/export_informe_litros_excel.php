@@ -7,17 +7,20 @@ $fecha_inicio = $_GET['fecha_inicio'] ?? date('Y-m-01');
 $fecha_fin = $_GET['fecha_fin'] ?? date('Y-m-d');
 
 // Configurar cabeceras para la descarga del archivo Excel
-header('Content-Type: application/vnd.ms-excel');
-header('Content-Disposition: attachment;filename="informe_litros_vendidos_' . $fecha_inicio . '_a_' . $fecha_fin . '.xls"');
+header('Content-Type: text/csv; charset=UTF-8');
+header('Content-Disposition: attachment;filename="informe_litros_vendidos_' . $fecha_inicio . '_a_' . $fecha_fin . '.csv"');
 header('Cache-Control: max-age=0');
 
 // Abrir el flujo de salida para escribir en el archivo Excel
 $output = fopen('php://output', 'w');
 
+// Añadir BOM de UTF-8 para compatibilidad con Excel
+fwrite($output, "\xEF\xBB\xBF");
+
 // Escribir la cabecera del informe
-fputcsv($output, [utf8_decode('Informe de Litros Vendidos por Producto y Fecha')], "\t");
-fputcsv($output, [utf8_decode('Periodo: ' . date('d/m/Y', strtotime($fecha_inicio)) . ' al ' . date('d/m/Y', strtotime($fecha_fin)))], "\t");
-fputcsv($output, [], "\t"); // Línea en blanco
+fwrite($output, "Informe de Litros Vendidos por Producto y Fecha\n");
+fwrite($output, 'Periodo: ' . date('d/m/Y', strtotime($fecha_inicio)) . ' al ' . date('d/m/Y', strtotime($fecha_fin)) . "\n");
+fwrite($output, "\n"); // Línea en blanco
 
 $report_data = [];
 $all_products = [];
@@ -100,10 +103,10 @@ try {
     // Escribir las cabeceras de la tabla
     $headers = ['Fecha'];
     foreach ($sorted_product_cols as $product) {
-        $headers[] = utf8_decode($product['name']);
+        $headers[] = $product['name'];
     }
     $headers[] = 'Total Diario';
-    fputcsv($output, $headers, "\t");
+    fwrite($output, implode(";", $headers) . "\n");
 
     // Escribir las filas de datos
     foreach ($report_data as $fecha => $productos_vendidos) {
@@ -113,20 +116,20 @@ try {
             $row_data[] = number_format($litros, 2, ',', ''); // Usar coma para decimales
         }
         $row_data[] = number_format($daily_totals[$fecha], 2, ',', ''); // Usar coma para decimales
-        fputcsv($output, $row_data, "\t");
+        fwrite($output, implode(";", $row_data) . "\n");
     }
 
     // Escribir la fila de totales por producto
-    fputcsv($output, [], "\t"); // Línea en blanco
-    $total_row_data = [utf8_decode('TOTALES POR PRODUCTO:')];
+    fwrite($output, "\n"); // Línea en blanco
+    $total_row_data = ['TOTALES POR PRODUCTO:'];
     foreach ($sorted_product_cols as $product) {
         $total_row_data[] = number_format($product_grand_totals[$product['id']] ?? 0, 2, ',', ''); // Usar coma para decimales
     }
     $total_row_data[] = number_format($total_litros_vendidos_general, 2, ',', ''); // Usar coma para decimales
-    fputcsv($output, $total_row_data, "\t");
+    fwrite($output, implode(";", $total_row_data) . "\n");
 
 } catch (PDOException $e) {
-    fputcsv($output, [utf8_decode('Error al generar el informe: ' . $e->getMessage())], "\t");
+    fwrite($output, 'Error al generar el informe: ' . $e->getMessage() . "\n");
 }
 
 // Cerrar el flujo de salida
