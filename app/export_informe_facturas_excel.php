@@ -7,31 +7,34 @@ $fecha_inicio = $_GET['fecha_inicio'] ?? date('Y-m-01');
 $fecha_fin = $_GET['fecha_fin'] ?? date('Y-m-d');
 
 // Configurar cabeceras para la descarga del archivo Excel
-header('Content-Type: application/vnd.ms-excel');
-header('Content-Disposition: attachment;filename="informe_facturas_emitidas_' . $fecha_inicio . '_a_' . $fecha_fin . '.xls"');
+header('Content-Type: text/csv; charset=UTF-8');
+header('Content-Disposition: attachment;filename="informe_facturas_emitidas_' . $fecha_inicio . '_a_' . $fecha_fin . '.csv"');
 header('Cache-Control: max-age=0');
 
 // Abrir el flujo de salida para escribir en el archivo Excel
 $output = fopen('php://output', 'w');
 
+// Añadir BOM de UTF-8 para compatibilidad con Excel
+fwrite($output, "\xEF\xBB\xBF");
+
 // Escribir la cabecera del informe
-fputcsv($output, [utf8_decode('Informe de Facturas Emitidas')], "\t");
-fputcsv($output, [utf8_decode('Periodo: ' . date('d/m/Y', strtotime($fecha_inicio)) . ' al ' . date('d/m/Y', strtotime($fecha_fin)))], "\t");
-fputcsv($output, [], "\t"); // Línea en blanco
+fwrite($output, "Informe de Facturas Emitidas\n");
+fwrite($output, 'Periodo: ' . date('d/m/Y', strtotime($fecha_inicio)) . ' al ' . date('d/m/Y', strtotime($fecha_fin)) . "\n");
+fwrite($output, "\n"); // Línea en blanco
 
 // Escribir las cabeceras de la tabla
 $headers = [
-    utf8_decode('Nº Fact.'),
+    'Nº Fact.',
     'Fecha',
     'Cliente',
     'NIF',
-    utf8_decode('Base Imponible'),
+    'Base Imponible',
     '% IVA',
     'Total IVA',
-    utf8_decode('Total Fact.'),
+    'Total Fact.',
     'Litros'
 ];
-fputcsv($output, $headers, "\t");
+fwrite($output, implode(";", $headers) . "\n");
 
 $total_litros_facturados_general = 0;
 $total_base_imponible_general = 0;
@@ -97,15 +100,15 @@ try {
         $row_data = [
             $factura['id_factura'],
             date('d/m/Y', strtotime($factura['fecha_factura'])),
-            utf8_decode($factura['nombre_cliente']),
-            utf8_decode($factura['nif'] ?: 'N/A'),
+            $factura['nombre_cliente'],
+            $factura['nif'] ?: 'N/A',
             number_format($base_imponible_factura, 2, ',', ''), // Cambiado a coma como separador decimal
             empty($unique_ivas) ? 'N/A' : implode(', ', $unique_ivas) . '%',
             number_format($factura['total_iva_factura'], 2, ',', ''), // Cambiado a coma como separador decimal
             number_format($factura['total_factura_iva_incluido'], 2, ',', ''), // Cambiado a coma como separador decimal
             number_format($current_total_litros, 2, ',', '') // Cambiado a coma como separador decimal
         ];
-        fputcsv($output, $row_data, "\t");
+        fwrite($output, implode(";", $row_data) . "\n");
 
         // Sumar para los totales generales
         $total_litros_facturados_general += $current_total_litros;
@@ -117,18 +120,18 @@ try {
     // Escribir la fila de totales
     $total_row_data = [
         '', '', '',
-        utf8_decode('TOTALES DEL PERIODO:'),
+        'TOTALES DEL PERIODO:',
         number_format($total_base_imponible_general, 2, ',', ''), // Cambiado a coma como separador decimal
         '', // Columna vacía para %IVA
         number_format($total_iva_general, 2, ',', ''), // Cambiado a coma como separador decimal
         number_format($total_factura_general, 2, ',', ''), // Cambiado a coma como separador decimal
         number_format($total_litros_facturados_general, 2, ',', '') // Cambiado a coma como separador decimal
     ];
-    fputcsv($output, $total_row_data, "\t");
+    fwrite($output, implode(";", $total_row_data) . "\n");
 
 } catch (PDOException $e) {
     // En caso de error, escribir un mensaje en el archivo Excel
-    fputcsv($output, [utf8_decode('Error al generar el informe: ' . $e->getMessage())], "\t");
+    fwrite($output, 'Error al generar el informe: ' . $e->getMessage() . "\n");
 }
 
 // Cerrar el flujo de salida
