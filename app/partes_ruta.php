@@ -1272,8 +1272,8 @@ if (isset($_GET['view_id']) && is_numeric($_GET['view_id'])) {
                                 ?>
                                 <span class="badge <?php echo $parteRutaBadgeClass; ?>" id="parteRutaEstadoBadge"><?php echo htmlspecialchars($parte_ruta_details['estado']); ?></span>
                             </div>
-                            <div class="col-md-4"><strong>Kilómetros:</strong> <?php echo htmlspecialchars(number_format($parte_ruta_details['total_kilometros'] ?? 0, 2, ',', '.')); ?> km</div>
-                            <div class="col-md-4"><strong>Duración Est.:</strong> <?php echo htmlspecialchars(formatDurationPHP($parte_ruta_details['duracion_estimada_segundos'] ?? 0)); ?></div>
+                            <div class="col-md-4"><strong>Kilómetros:</strong> <span id="display_kilometros"><?php echo htmlspecialchars(number_format($parte_ruta_details['total_kilometros'] ?? 0, 2, ',', '.')); ?></span> km</div>
+                            <div class="col-md-4"><strong>Duración Est.:</strong> <span id="display_duracion"><?php echo htmlspecialchars(formatDurationPHP($parte_ruta_details['duracion_estimada_segundos'] ?? 0)); ?></span></div>
                             <div class="col-md-8"><strong>Observaciones:</strong> <?php echo htmlspecialchars($parte_ruta_details['observaciones'] ?: 'N/A'); ?></div>
                         </div>
 
@@ -2239,6 +2239,17 @@ if (isset($_GET['view_id']) && is_numeric($_GET['view_id'])) {
                     totalDistanceSpan.textContent = (currentTotalDistance / 1000).toFixed(2) + ' km';
                     totalDurationSpan.textContent = formatDuration(currentTotalDuration);
                     routeSummaryDiv.style.display = 'block';
+
+                    // Update the main display elements as well
+                    const displayKilometros = document.getElementById('display_kilometros');
+                    const displayDuracion = document.getElementById('display_duracion');
+                    if (displayKilometros) {
+                        // Use number_format to be consistent with PHP display
+                        displayKilometros.textContent = number_format((currentTotalDistance / 1000), 2, ',', '.');
+                    }
+                    if (displayDuracion) {
+                        displayDuracion.textContent = formatDuration(currentTotalDuration);
+                    }
 
                     const editTotalKilometrosInput = document.getElementById('edit_total_kilometros');
                     const editDuracionEstimadaSegundosInput = document.getElementById('edit_duracion_estimada_segundos');
