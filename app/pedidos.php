@@ -527,6 +527,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit();
                 break;
 
+            case 'add_client_from_modal':
+                header('Content-Type: application/json');
+                try {
+                    $nombre_cliente = $_POST['nombre_cliente'] ?? '';
+                    if (empty($nombre_cliente)) {
+                        throw new Exception("El nombre del cliente es obligatorio.");
+                    }
+
+                    $stmt = $pdo->prepare("
+                        INSERT INTO clientes (nombre_cliente, nif, direccion, ciudad, provincia, codigo_postal, telefono, email)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ");
+                    $stmt->execute([
+                        strtoupper($nombre_cliente),
+                        strtoupper($_POST['nif'] ?? null),
+                        strtoupper($_POST['direccion'] ?? null),
+                        strtoupper($_POST['ciudad'] ?? null),
+                        strtoupper($_POST['provincia'] ?? null),
+                        strtoupper($_POST['codigo_postal'] ?? null),
+                        strtoupper($_POST['telefono'] ?? null),
+                        strtoupper($_POST['email'] ?? null)
+                    ]);
+                    $new_client_id = $pdo->lastInsertId();
+
+                    if ($in_transaction) $pdo->commit();
+
+                    // Devolvemos el cliente completo para poder actualizar el mapa de clientes en JS
+                    $stmt_new_client = $pdo->prepare("SELECT * FROM clientes WHERE id_cliente = ?");
+                    $stmt_new_client->execute([$new_client_id]);
+                    $new_client_data = $stmt_new_client->fetch(PDO::FETCH_ASSOC);
+
+
+                    echo json_encode([
+                        'success' => true,
+                        'message' => 'Cliente creado con éxito.',
+                        'cliente' => $new_client_data // Usar 'cliente' para consistencia con clientes.php
+                    ]);
+
+                } catch (Exception $e) {
+                    if ($in_transaction) $pdo->rollBack();
+                    echo json_encode(['success' => false, 'message' => 'Error al crear cliente: ' . $e->getMessage()]);
+                }
+                exit();
+                break;
+
             case 'search_clients':
                
                 header('Content-Type: application/json');
@@ -1557,7 +1602,7 @@ $new_invoice_client_name = $_GET['new_invoice_client_name'] ?? '';
                                                         $partes_ids = explode(',', $pedido_actual['partes_ruta_asociadas']);
                                                         $links = [];
                                                         foreach ($partes_ids as $p_id) {
-                                                            $links[] = "<a href='partes_ruta.php?view=details&id=" . htmlspecialchars($p_id) . "' class='badge bg-light text-dark'>#" . htmlspecialchars($p_id) . "</a>";
+                                                            $links[] = "<a href='partes_ruta.php?view_id=" . htmlspecialchars($p_id) . "' class='badge bg-light text-dark'>#" . htmlspecialchars($p_id) . "</a>";
                                                         }
                                                         echo implode(', ', $links);
                                                     ?>
@@ -1973,11 +2018,15 @@ $new_invoice_client_name = $_GET['new_invoice_client_name'] ?? '';
         // NEW FUNCTION: Redirect to clientes.php to create a new client from the order modal
         function createNewClientFromOrderModal() {
             const clientName = document.getElementById('client_search_input').value.trim();
-            let url = 'clientes.php?action=new';
-            if (clientName) {
-                url += '&new_client_name=' + encodeURIComponent(clientName);
+            document.getElementById('addClientForm').reset(); // Reset form
+            const errorDiv = document.getElementById('addClientError');
+            if(errorDiv) {
+                errorDiv.style.display = 'none'; // Hide error
+                errorDiv.textContent = '';
             }
-            window.location.href = url;
+            document.getElementById('new_nombre_cliente').value = clientName; // Pre-fill name
+            const addClientModal = new bootstrap.Modal(document.getElementById('addClientModal'));
+            addClientModal.show();
         }
 
         // Wrap the entire script in an IIFE to prevent global variable conflicts
@@ -2037,6 +2086,65 @@ $new_invoice_client_name = $_GET['new_invoice_client_name'] ?? '';
                 const editShippingAddressSearchResultsDiv = document.getElementById('edit_shipping_address_search_results'); // NEW
                 const editShippingAddressError = document.getElementById('edit_shipping_address_error');
                 const editNoShippingAddressesInfo = document.getElementById('edit_no_shipping_addresses_info');
+
+                // Add Client Form Submission (Moved inside DOMContentLoaded to ensure scope)
+                const addClientForm = document.getElementById('addClientForm');
+                if (addClientForm) {
+                    addClientForm.addEventListener('submit', async function(event) {
+                        event.preventDefault();
+                        const addClientErrorDiv = document.getElementById('addClientError');
+                        addClientErrorDiv.style.display = 'none';
+
+                        const formData = new FormData(addClientForm);
+                        formData.append('accion', 'add_client_from_modal');
+
+                        try {
+                            const response = await fetch('pedidos.php', {
+                                method: 'POST',
+                                body: formData
+                            });
+                            const data = await response.json();
+
+                            if (data.success && data.cliente) {
+                                const newClient = data.cliente;
+
+                                clientesMapJs[newClient.id_cliente] = {
+                                    nombre_cliente: newClient.nombre_cliente,
+                                    nif: newClient.nif,
+                                    direccion: newClient.direccion,
+                                    ciudad: newClient.ciudad,
+                                    provincia: newClient.provincia,
+                                    codigo_postal: newClient.codigo_postal,
+                                    telefono: newClient.telefono,
+                                    email: newClient.email,
+                                    direcciones_envio: []
+                                };
+
+                                const clientSearchInput = document.getElementById('client_search_input');
+                                const idClienteSelectedInput = document.getElementById('id_cliente_selected');
+                                clientSearchInput.value = newClient.nombre_cliente;
+                                idClienteSelectedInput.value = newClient.id_cliente;
+
+                                const addClientModal = bootstrap.Modal.getInstance(document.getElementById('addClientModal'));
+                                addClientModal.hide();
+
+                                // After creating and selecting a new client, we must load their shipping addresses.
+                                // For a new client, this will correctly show the "No addresses" message.
+                                loadShippingAddresses(newClient.id_cliente, shippingAddressSearchInput, idDireccionEnvioSelectedInput, shippingAddressSearchResultsDiv, shippingAddressGroup, shippingAddressError, noShippingAddressesInfo);
+
+                                showCustomModal('Cliente Creado', 'Cliente "' + newClient.nombre_cliente + '" creado y seleccionado con éxito.', 'success');
+
+                            } else {
+                                addClientErrorDiv.textContent = data.message || 'Error desconocido al crear el cliente.';
+                                addClientErrorDiv.style.display = 'block';
+                            }
+                        } catch (error) {
+                            console.error('Error creating client via AJAX:', error);
+                            addClientErrorDiv.textContent = 'Error de red o del servidor. Por favor, inténtelo de nuevo.';
+                            addClientErrorDiv.style.display = 'block';
+                        }
+                    });
+                }
 
 
                 // Filter buttons and table
@@ -2123,30 +2231,40 @@ $new_invoice_client_name = $_GET['new_invoice_client_name'] ?? '';
                     });
                 }
 
-                // If a client ID was passed to pre-fill the new order modal
-                const urlParams = new URLSearchParams(window.location.search); // Declared once here
+                // Consolidated logic for pre-filling and opening the modal
+                const urlParams = new URLSearchParams(window.location.search);
                 const newInvoiceClientId = urlParams.get('new_invoice_client_id');
                 const newInvoiceClientName = urlParams.get('new_invoice_client_name');
-                const openModalParam = urlParams.get('open_modal'); // Get the new parameter
+                const openModalParam = urlParams.get('open_modal');
+                const newInvoiceShippingAddressId = urlParams.get('id_direccion_envio');
 
                 if (newInvoiceClientId && newInvoiceClientName) {
-                    // Asegurarse de que el cliente exista en nuestros datos cargados
                     if (clientesMapJs[newInvoiceClientId]) {
                         const clientInfo = clientesMapJs[newInvoiceClientId];
-                        // Formatear el nombre del cliente de la misma manera que el datalist
-                        // Decodificar el nombre para asegurar que caracteres especiales se muestren correctamente
                         const clientDisplayValue = `${decodeURIComponent(newInvoiceClientName)} (${clientInfo.nif || 'N/A'})`;
                         
-                        if (clientSearchInput) { // Check if element exists before accessing
+                        if (clientSearchInput) {
                             clientSearchInput.value = clientDisplayValue;
                         }
-                        if (idClienteSelectedInput) { // Check if element exists before accessing
+                        if (idClienteSelectedInput) {
                             idClienteSelectedInput.value = newInvoiceClientId;
-                            // MODIFICACIÓN: Cargar direcciones de envío al precargar cliente
-                            loadShippingAddresses(newInvoiceClientId, shippingAddressSearchInput, idDireccionEnvioSelectedInput, shippingAddressSearchResultsDiv, shippingAddressGroup, shippingAddressError, noShippingAddressesInfo);
+                            loadShippingAddresses(newInvoiceClientId, shippingAddressSearchInput, idDireccionEnvioSelectedInput, shippingAddressSearchResultsDiv, shippingAddressGroup, shippingAddressError, noShippingAddressesInfo, newInvoiceShippingAddressId);
                         }
                     }
                 }
+
+                if (openModalParam === 'true') {
+                    const addPedidoModal = new bootstrap.Modal(document.getElementById('addPedidoModal'));
+                    addPedidoModal.show();
+                    // Clean up URL parameters after using them
+                    urlParams.delete('open_modal');
+                    urlParams.delete('new_invoice_client_id');
+                    urlParams.delete('new_invoice_client_name');
+                    urlParams.delete('id_direccion_envio');
+                    const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+                    window.history.replaceState(null, '', newUrl);
+                }
+
 
                 // Initial state for new order modal delivery type fields
                 if (newPedidoTipoEntregaSelect) {
@@ -2892,5 +3010,64 @@ $new_invoice_client_name = $_GET['new_invoice_client_name'] ?? '';
             });
         })(); // End of IIFE
     </script>
+
+    <!-- Modal para Crear Nuevo Cliente Rápidamente -->
+    <div class="modal fade" id="addClientModal" tabindex="-1" aria-labelledby="addClientModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <form id="addClientForm">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="addClientModalLabel">Crear Nuevo Cliente</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="new_nombre_cliente" class="form-label">Nombre del Cliente</label>
+                                <input type="text" class="form-control" id="new_nombre_cliente" name="nombre_cliente" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="new_nif" class="form-label">NIF</label>
+                                <input type="text" class="form-control" id="new_nif" name="nif">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="new_direccion" class="form-label">Dirección</label>
+                            <input type="text" class="form-control" id="new_direccion" name="direccion">
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="new_ciudad" class="form-label">Ciudad</label>
+                                <input type="text" class="form-control" id="new_ciudad" name="ciudad">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="new_provincia" class="form-label">Provincia</label>
+                                <input type="text" class="form-control" id="new_provincia" name="provincia">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="new_codigo_postal" class="form-label">Código Postal</label>
+                                <input type="text" class="form-control" id="new_codigo_postal" name="codigo_postal">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="new_telefono" class="form-label">Teléfono</label>
+                                <input type="text" class="form-control" id="new_telefono" name="telefono">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="new_email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="new_email" name="email">
+                        </div>
+                        <div id="addClientError" class="alert alert-danger" style="display:none;"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Guardar Cliente</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

@@ -479,9 +479,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // --- Lógica para actualizar el estado general del parte de ruta (AJAX) ---
-if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest' && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_parte_ruta_status') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_parte_ruta_status') {
+    // Temporarily disable display_errors for this JSON endpoint
+    // to prevent PHP notices/warnings from breaking the JSON output.
+    ini_set('display_errors', 0);
+
     ob_clean(); // Limpiar cualquier salida anterior
     header('Content-Type: application/json');
+
+    // NEW: Add a check for the PDO object to prevent fatal errors
+    if (!isset($pdo) || !$pdo) {
+        // Log the error for debugging on the server side
+        error_log("Error crítico en partes_ruta.php: El objeto PDO no está disponible para la acción 'update_parte_ruta_status'.");
+        // Send a clean JSON error response
+        echo json_encode(['success' => false, 'message' => 'Error crítico: No se pudo establecer la conexión con la base de datos.']);
+        exit();
+    }
 
     $id_parte_ruta = $_POST['id_parte_ruta'] ?? null;
     $new_status = $_POST['new_status'] ?? null;
@@ -1259,28 +1272,26 @@ if (isset($_GET['view_id']) && is_numeric($_GET['view_id'])) {
                                 ?>
                                 <span class="badge <?php echo $parteRutaBadgeClass; ?>" id="parteRutaEstadoBadge"><?php echo htmlspecialchars($parte_ruta_details['estado']); ?></span>
                             </div>
-                            <div class="col-md-4"><strong>Kilómetros:</strong> <?php echo htmlspecialchars(number_format($parte_ruta_details['total_kilometros'] ?? 0, 2, ',', '.')); ?> km</div>
-                            <div class="col-md-4"><strong>Duración Est.:</strong> <?php echo htmlspecialchars(formatDurationPHP($parte_ruta_details['duracion_estimada_segundos'] ?? 0)); ?></div>
+                            <div class="col-md-4"><strong>Kilómetros:</strong> <span id="display_kilometros"><?php echo htmlspecialchars(number_format($parte_ruta_details['total_kilometros'] ?? 0, 2, ',', '.')); ?></span> km</div>
+                            <div class="col-md-4"><strong>Duración Est.:</strong> <span id="display_duracion"><?php echo htmlspecialchars(formatDurationPHP($parte_ruta_details['duracion_estimada_segundos'] ?? 0)); ?></span></div>
                             <div class="col-md-8"><strong>Observaciones:</strong> <?php echo htmlspecialchars($parte_ruta_details['observaciones'] ?: 'N/A'); ?></div>
                         </div>
 
                         <div class="mb-4 text-center">
+                            <button type="button" class="btn btn-warning rounded-pill me-2" id="editParteRutaBtn">
+                                <i class="bi bi-pencil"></i> Editar Parte de Ruta
+                            </button>
                             <button type="button" class="btn btn-primary rounded-pill me-2" onclick="window.updateParteRutaStatus(<?php echo htmlspecialchars($parte_ruta_details['id_parte_ruta']); ?>, 'En Curso')">
                                 <i class="bi bi-truck"></i> Marcar como En Curso
                             </button>
-                            <button type="button" class="btn btn-success rounded-pill" onclick="window.updateParteRutaStatus(<?php echo htmlspecialchars($parte_ruta_details['id_parte_ruta']); ?>, 'Completado')">
+                            <button type="button" class="btn btn-success rounded-pill me-2" onclick="window.updateParteRutaStatus(<?php echo htmlspecialchars($parte_ruta_details['id_parte_ruta']); ?>, 'Completado')">
                                 <i class="bi bi-check-circle"></i> Marcar como Completado
                             </button>
-                            <button type="button" class="btn btn-info rounded-pill ms-2 view-map-btn"
+                            <button type="button" class="btn btn-info rounded-pill view-map-btn"
                                     data-id-parte="<?php echo htmlspecialchars($parte_ruta_details['id_parte_ruta']); ?>"
                                     data-ruta-nombre="<?php echo htmlspecialchars($parte_ruta_details['nombre_ruta']); ?>"
                                     title="Ver en Mapa">
                                 <i class="bi bi-map"></i> Ver en Mapa
-                            </button>
-                        </div>
-                        <div class="text-center mt-4">
-                            <button type="button" class="btn btn-warning rounded-pill" id="editParteRutaBtn">
-                                <i class="bi bi-pencil"></i> Editar Parte de Ruta
                             </button>
                         </div>
 
@@ -1359,12 +1370,7 @@ if (isset($_GET['view_id']) && is_numeric($_GET['view_id'])) {
                                                 </td>
                                                 <td><span class="badge <?php echo $badgeClassCobro; ?>"><?php echo $estadoCobroTexto; ?></span></td>
                                                 <td class="text-center">
-                                                    <button type="button" class="btn btn-sm btn-primary mb-1 update-pedido-status-btn"
-                                                            data-id-parte-ruta-pedido="<?php echo htmlspecialchars($p['id_parte_ruta_pedido']); ?>"
-                                                            title="Guardar Cambios del Pedido">
-                                                        <i class="bi bi-save"></i> Guardar
-                                                    </button>
-                                                    <a href="pedidos.php?view=details&id=<?php echo htmlspecialchars($p['id_pedido']); ?>" class="btn btn-sm btn-outline-primary me-1" title="Ver detalles del pedido" target="_blank">
+                                                    <a href="pedidos.php?view=details&id=<?php echo htmlspecialchars($p['id_pedido']); ?>&from_parte_ruta_id=<?php echo htmlspecialchars($parte_ruta_details['id_parte_ruta']); ?>" class="btn btn-sm btn-outline-primary me-1" title="Ver detalles del pedido" target="_blank">
                                                         <i class="bi bi-eye"></i> Ver Pedido
                                                     </a>
                                                     <button type="button" class="btn btn-sm btn-success" title="Convertir a Factura"
@@ -1476,10 +1482,10 @@ if (isset($_GET['view_id']) && is_numeric($_GET['view_id'])) {
                                 <button type="button" class="btn btn-success rounded-pill me-2" id="filterCompletedBtn">
                                     <i class="bi bi-check-circle"></i> Ver Completados
                                 </button>
-                                <button type="button" class="btn btn-secondary rounded-pill me-3" id="showAllBtn">
+                                <button type="button" class="btn btn-secondary rounded-pill me-5" id="showAllBtn">
                                     <i class="bi bi-list-ul"></i> Ver Todos
                                 </button>
-                                <a href="crear_parte_ruta.php" class="btn btn-success rounded-pill" id="addParteRutaBtn">
+                                <a href="crear_parte_ruta.php" class="btn btn-success rounded-pill ms-5" id="addParteRutaBtn">
                                     <i class="bi bi-plus-circle me-2"></i>Añadir Nuevo Parte de Ruta
                                 </a>
                             </div>
@@ -2233,6 +2239,17 @@ if (isset($_GET['view_id']) && is_numeric($_GET['view_id'])) {
                     totalDistanceSpan.textContent = (currentTotalDistance / 1000).toFixed(2) + ' km';
                     totalDurationSpan.textContent = formatDuration(currentTotalDuration);
                     routeSummaryDiv.style.display = 'block';
+
+                    // Update the main display elements as well
+                    const displayKilometros = document.getElementById('display_kilometros');
+                    const displayDuracion = document.getElementById('display_duracion');
+                    if (displayKilometros) {
+                        // Use number_format to be consistent with PHP display
+                        displayKilometros.textContent = number_format((currentTotalDistance / 1000), 2, ',', '.');
+                    }
+                    if (displayDuracion) {
+                        displayDuracion.textContent = formatDuration(currentTotalDuration);
+                    }
 
                     const editTotalKilometrosInput = document.getElementById('edit_total_kilometros');
                     const editDuracionEstimadaSegundosInput = document.getElementById('edit_duracion_estimada_segundos');
