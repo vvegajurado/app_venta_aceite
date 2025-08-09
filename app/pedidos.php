@@ -1557,7 +1557,7 @@ $new_invoice_client_name = $_GET['new_invoice_client_name'] ?? '';
                                                         $partes_ids = explode(',', $pedido_actual['partes_ruta_asociadas']);
                                                         $links = [];
                                                         foreach ($partes_ids as $p_id) {
-                                                            $links[] = "<a href='partes_ruta.php?view=details&id=" . htmlspecialchars($p_id) . "' class='badge bg-light text-dark'>#" . htmlspecialchars($p_id) . "</a>";
+                                                            $links[] = "<a href='partes_ruta.php?view_id=" . htmlspecialchars($p_id) . "' class='badge bg-light text-dark'>#" . htmlspecialchars($p_id) . "</a>";
                                                         }
                                                         echo implode(', ', $links);
                                                     ?>

@@ -1359,12 +1359,7 @@ if (isset($_GET['view_id']) && is_numeric($_GET['view_id'])) {
                                                 </td>
                                                 <td><span class="badge <?php echo $badgeClassCobro; ?>"><?php echo $estadoCobroTexto; ?></span></td>
                                                 <td class="text-center">
-                                                    <button type="button" class="btn btn-sm btn-primary mb-1 update-pedido-status-btn"
-                                                            data-id-parte-ruta-pedido="<?php echo htmlspecialchars($p['id_parte_ruta_pedido']); ?>"
-                                                            title="Guardar Cambios del Pedido">
-                                                        <i class="bi bi-save"></i> Guardar
-                                                    </button>
-                                                    <a href="pedidos.php?view=details&id=<?php echo htmlspecialchars($p['id_pedido']); ?>" class="btn btn-sm btn-outline-primary me-1" title="Ver detalles del pedido" target="_blank">
+                                                    <a href="pedidos.php?view=details&id=<?php echo htmlspecialchars($p['id_pedido']); ?>&from_parte_ruta_id=<?php echo htmlspecialchars($parte_ruta_details['id_parte_ruta']); ?>" class="btn btn-sm btn-outline-primary me-1" title="Ver detalles del pedido" target="_blank">
                                                         <i class="bi bi-eye"></i> Ver Pedido
                                                     </a>
                                                     <button type="button" class="btn btn-sm btn-success" title="Convertir a Factura"
