@@ -479,9 +479,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // --- Lógica para actualizar el estado general del parte de ruta (AJAX) ---
-if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest' && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_parte_ruta_status') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_parte_ruta_status') {
+    // Temporarily disable display_errors for this JSON endpoint
+    // to prevent PHP notices/warnings from breaking the JSON output.
+    ini_set('display_errors', 0);
+
     ob_clean(); // Limpiar cualquier salida anterior
     header('Content-Type: application/json');
+
+    // NEW: Add a check for the PDO object to prevent fatal errors
+    if (!isset($pdo) || !$pdo) {
+        // Log the error for debugging on the server side
+        error_log("Error crítico en partes_ruta.php: El objeto PDO no está disponible para la acción 'update_parte_ruta_status'.");
+        // Send a clean JSON error response
+        echo json_encode(['success' => false, 'message' => 'Error crítico: No se pudo establecer la conexión con la base de datos.']);
+        exit();
+    }
 
     $id_parte_ruta = $_POST['id_parte_ruta'] ?? null;
     $new_status = $_POST['new_status'] ?? null;
@@ -1265,22 +1278,20 @@ if (isset($_GET['view_id']) && is_numeric($_GET['view_id'])) {
                         </div>
 
                         <div class="mb-4 text-center">
+                            <button type="button" class="btn btn-warning rounded-pill me-2" id="editParteRutaBtn">
+                                <i class="bi bi-pencil"></i> Editar Parte de Ruta
+                            </button>
                             <button type="button" class="btn btn-primary rounded-pill me-2" onclick="window.updateParteRutaStatus(<?php echo htmlspecialchars($parte_ruta_details['id_parte_ruta']); ?>, 'En Curso')">
                                 <i class="bi bi-truck"></i> Marcar como En Curso
                             </button>
-                            <button type="button" class="btn btn-success rounded-pill" onclick="window.updateParteRutaStatus(<?php echo htmlspecialchars($parte_ruta_details['id_parte_ruta']); ?>, 'Completado')">
+                            <button type="button" class="btn btn-success rounded-pill me-2" onclick="window.updateParteRutaStatus(<?php echo htmlspecialchars($parte_ruta_details['id_parte_ruta']); ?>, 'Completado')">
                                 <i class="bi bi-check-circle"></i> Marcar como Completado
                             </button>
-                            <button type="button" class="btn btn-info rounded-pill ms-2 view-map-btn"
+                            <button type="button" class="btn btn-info rounded-pill view-map-btn"
                                     data-id-parte="<?php echo htmlspecialchars($parte_ruta_details['id_parte_ruta']); ?>"
                                     data-ruta-nombre="<?php echo htmlspecialchars($parte_ruta_details['nombre_ruta']); ?>"
                                     title="Ver en Mapa">
                                 <i class="bi bi-map"></i> Ver en Mapa
-                            </button>
-                        </div>
-                        <div class="text-center mt-4">
-                            <button type="button" class="btn btn-warning rounded-pill" id="editParteRutaBtn">
-                                <i class="bi bi-pencil"></i> Editar Parte de Ruta
                             </button>
                         </div>
 
