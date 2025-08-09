@@ -1476,10 +1476,10 @@ if (isset($_GET['view_id']) && is_numeric($_GET['view_id'])) {
                                 <button type="button" class="btn btn-success rounded-pill me-2" id="filterCompletedBtn">
                                     <i class="bi bi-check-circle"></i> Ver Completados
                                 </button>
-                                <button type="button" class="btn btn-secondary rounded-pill me-3" id="showAllBtn">
+                                <button type="button" class="btn btn-secondary rounded-pill me-5" id="showAllBtn">
                                     <i class="bi bi-list-ul"></i> Ver Todos
                                 </button>
-                                <a href="crear_parte_ruta.php" class="btn btn-success rounded-pill" id="addParteRutaBtn">
+                                <a href="crear_parte_ruta.php" class="btn btn-success rounded-pill ms-5" id="addParteRutaBtn">
                                     <i class="bi bi-plus-circle me-2"></i>Añadir Nuevo Parte de Ruta
                                 </a>
                             </div>
