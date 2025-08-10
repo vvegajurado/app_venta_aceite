@@ -1,12 +1,12 @@
 <?php
-// Incluir el archivo de conexión a la base de datos
+// Incluir el archivo de conexiÃ³n a la base de datos
 include 'conexion.php';
 
-// Incluir el archivo de verificación de autenticación y roles
-// Este dashboard será accesible para todos los roles logueados.
+// Incluir el archivo de verificaciÃ³n de autenticaciÃ³n y roles
+// Este dashboard serÃ¡ accesible para todos los roles logueados.
 include 'auth_check.php';
 
-// Iniciar sesión para gestionar mensajes
+// Iniciar sesiÃ³n para gestionar mensajes
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
@@ -15,7 +15,7 @@ if (session_status() == PHP_SESSION_NONE) {
 $mensaje = '';
 $tipo_mensaje = '';
 
-// --- Lógica para obtener datos del dashboard ---
+// --- LÃ³gica para obtener datos del dashboard ---
 $total_litros_en_stock = 0;
 $total_ventas_mes_actual = 0; // Euros
 $total_clientes = 0;
@@ -44,7 +44,7 @@ try {
         $total_litros_en_stock += $item['total_litros_producto'];
     }
 
-    // 2. Obtener el stock actual de materias primas en depósitos
+    // 2. Obtener el stock actual de materias primas en depÃ³sitos
     $stmt_mp_depositos = $pdo->query("
         SELECT mp.nombre_materia_prima, SUM(d.stock_actual) AS total_litros_mp
         FROM depositos d
@@ -54,8 +54,13 @@ try {
         ORDER BY mp.nombre_materia_prima ASC
     ");
     $stock_materias_primas_depositos = $stmt_mp_depositos->fetchAll(PDO::FETCH_ASSOC);
+    // Calcular el total de materias primas
+    $total_stock_materias_primas = 0;
+    foreach ($stock_materias_primas_depositos as $item) {
+        $total_stock_materias_primas += $item['total_litros_mp'];
+    }
 
-    // 3. Obtener el stock actual de lotes preparados (depósitos de mezcla con stock)
+    // 3. Obtener el stock actual de lotes preparados (depÃ³sitos de mezcla con stock)
     $stmt_lotes_preparados = $pdo->query("
         SELECT le.nombre_lote, dm.stock_actual AS litros_lote_preparado
         FROM lotes_envasado le
@@ -64,8 +69,13 @@ try {
         ORDER BY le.fecha_creacion DESC
     ");
     $stock_lotes_preparados = $stmt_lotes_preparados->fetchAll(PDO::FETCH_ASSOC);
+    // Calcular el total de lotes preparados
+    $total_stock_lotes_preparados = 0;
+    foreach ($stock_lotes_preparados as $item) {
+        $total_stock_lotes_preparados += $item['litros_lote_preparado'];
+    }
 
-    // 4. Obtener el total de capacidad disponible en depósitos vacíos
+    // 4. Obtener el total de capacidad disponible en depÃ³sitos vacÃ­os
     $stmt_cap_vacios = $pdo->query("SELECT SUM(capacidad) AS total_capacidad_vacia FROM depositos WHERE stock_actual = 0");
     $result_cap_vacios = $stmt_cap_vacios->fetch(PDO::FETCH_ASSOC);
     $capacidad_depositos_vacios = $result_cap_vacios['total_capacidad_vacia'] ?? 0;
@@ -74,13 +84,13 @@ try {
     $today = date('Y-m-d');
     $first_day_of_month = date('Y-m-01');
 
-    // 5. Obtener el total de ventas del día actual (Euros)
+    // 5. Obtener el total de ventas del dÃ­a actual (Euros)
     $stmt_ventas_hoy_euros = $pdo->prepare("SELECT SUM(total_factura) AS total_ventas FROM facturas_ventas WHERE fecha_factura = ?");
     $stmt_ventas_hoy_euros->execute([$today]);
     $result_ventas_hoy_euros = $stmt_ventas_hoy_euros->fetch(PDO::FETCH_ASSOC);
     $ventas_hoy_euros = $result_ventas_hoy_euros['total_ventas'] ?? 0;
 
-    // 6. Obtener el total de ventas del día actual (Litros)
+    // 6. Obtener el total de ventas del dÃ­a actual (Litros)
     $stmt_ventas_hoy_litros = $pdo->prepare("
         SELECT SUM(df.cantidad * p.litros_por_unidad) AS total_litros
         FROM facturas_ventas f
@@ -110,12 +120,12 @@ try {
     $result_ventas_mes_litros = $stmt_ventas_mes_litros->fetch(PDO::FETCH_ASSOC);
     $ventas_mes_litros = $result_ventas_mes_litros['total_litros'] ?? 0;
 
-    // 9. Obtener el número total de clientes
+    // 9. Obtener el nÃºmero total de clientes
     $stmt_clientes = $pdo->query("SELECT COUNT(id_cliente) AS total_clientes FROM clientes");
     $resultado_clientes = $stmt_clientes->fetch(PDO::FETCH_ASSOC);
     $total_clientes = $resultado_clientes['total_clientes'] ?? 0;
 
-    // 10. Obtener las últimas 5 facturas
+    // 10. Obtener las Ãºltimas 5 facturas
     $stmt_ultimas_facturas = $pdo->query("
         SELECT f.id_factura, f.fecha_factura, c.nombre_cliente, f.total_factura, f.estado_pago
         FROM facturas_ventas f
@@ -130,7 +140,7 @@ try {
     $tipo_mensaje = 'danger';
 }
 
-// Cierra la conexión PDO al final del script
+// Cierra la conexiÃ³n PDO al final del script
 $pdo = null;
 ?>
 
@@ -139,7 +149,7 @@ $pdo = null;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Gestión de Aceite</title>
+    <title>Dashboard - GestiÃ³n de Aceite</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -153,21 +163,21 @@ $pdo = null;
         :root {
             --primary-color: #0056b3; /* Azul primario, consistente con otros archivos */
             --primary-dark: #004494;
-            --secondary-color: #28a745; /* Verde para énfasis (usado para bg-info) */
+            --secondary-color: #28a745; /* Verde para Ã©nfasis (usado para bg-info) */
             --text-dark: #333;
             --text-light: #666;
             --bg-light: #f4f7f6; /* Fondo claro */
             --sidebar-bg: #343a40; /* Gris oscuro para el sidebar */
             --sidebar-link: #adb5bd; /* Gris claro para enlaces del sidebar */
             --sidebar-hover: #495057; /* Color de fondo hover para sidebar */
-            --sidebar-active: #004494; /* Azul más oscuro para el elemento activo */
+            --sidebar-active: #004494; /* Azul mÃ¡s oscuro para el elemento activo */
             --header-bg: #ffffff; /* Fondo blanco para el header */
             --shadow-light: rgba(0, 0, 0, 0.05);
             --shadow-medium: rgba(0, 0, 0, 0.1);
 
-            /* Ajuste de variables para que el sidebar esté siempre expandido o ancho por defecto */
+            /* Ajuste de variables para que el sidebar estÃ© siempre expandido o ancho por defecto */
             --sidebar-width: 250px; /* Ancho deseado para el sidebar con texto */
-            --content-max-width: 1300px; /* Nuevo: Ancho máximo para el contenido principal (ajustado para ambas tablas) */
+            --content-max-width: 1300px; /* Nuevo: Ancho mÃ¡ximo para el contenido principal (ajustado para ambas tablas) */
         }
 
         html, body {
@@ -216,12 +226,12 @@ $pdo = null;
         }
 
         .sidebar-header .app-icon {
-            font-size: 3rem; /* Más grande para el icono del header */
+            font-size: 3rem; /* MÃ¡s grande para el icono del header */
             color: #fff;
             margin-bottom: 10px;
         }
         .sidebar-header .app-logo {
-            max-width: 100px; /* Tamaño del logo en el sidebar */
+            max-width: 100px; /* TamaÃ±o del logo en el sidebar */
             height: auto;
             margin-bottom: 10px;
         }
@@ -270,7 +280,7 @@ $pdo = null;
             font-weight: bold;
         }
 
-        /* Estilos adicionales para los menús desplegables */
+        /* Estilos adicionales para los menÃºs desplegables */
         .sidebar-submenu-list {
             padding-left: 0;
             margin-top: 5px;
@@ -284,12 +294,12 @@ $pdo = null;
 
         .sidebar-submenu-link {
             display: block;
-            padding: 8px 15px 8px 55px; /* Ajuste para la indentación */
+            padding: 8px 15px 8px 55px; /* Ajuste para la indentaciÃ³n */
             color: var(--sidebar-link);
             text-decoration: none;
             transition: background-color 0.2s ease, color 0.2s ease;
             font-size: 0.95rem;
-            border-left: 5px solid transparent; /* Para la línea activa del submenú */
+            border-left: 5px solid transparent; /* Para la lÃ­nea activa del submenÃº */
         }
 
         .sidebar-submenu-link:hover, .sidebar-submenu-link.active {
@@ -306,7 +316,7 @@ $pdo = null;
             transform: rotate(180deg);
         }
 
-        /* Estilo para empujar el elemento de cerrar sesión al final */
+        /* Estilo para empujar el elemento de cerrar sesiÃ³n al final */
         .sidebar-menu-item.mt-auto {
             margin-top: auto !important; /* Empuja este elemento al final de la flexbox */
             border-top: 1px solid rgba(255, 255, 255, 0.1); /* Separador visual */
@@ -339,7 +349,7 @@ $pdo = null;
             color: var(--primary-dark);
             font-weight: 600;
         }
-        h1 { /* Estilo para el título principal del dashboard */
+        h1 { /* Estilo para el tÃ­tulo principal del dashboard */
             font-size: 2.2rem;
             margin-bottom: 30px;
             text-align: center;
@@ -564,10 +574,11 @@ $pdo = null;
         <?php include 'sidebar.php'; // Incluye el sidebar ?>
 
         <div class="main-content"> <!-- Renombrado de .content a .main-content -->
+            <?php include 'header.php'; ?>
             <div class="container-fluid">
                 <div class="d-flex justify-content-between align-items-center mb-4">
                     <h1 class="mb-0">Dashboard Principal</h1>
-                    <!-- Eliminado el texto de bienvenida y el botón de cerrar sesión -->
+                    <!-- Eliminado el texto de bienvenida y el botÃ³n de cerrar sesiÃ³n -->
                 </div>
 
                 <?php if ($mensaje): ?>
@@ -600,13 +611,13 @@ $pdo = null;
                         </div>
                     </div>
 
-                    <!-- Stock Actual de Materias Primas en Depósitos -->
+                    <!-- Stock Actual de Materias Primas en DepÃ³sitos -->
                     <div class="col-md-6 col-lg-4 mb-4">
                         <div class="card text-center">
                             <div class="card-body">
-                                <i class="bi bi-barrel-fill dashboard-card-icon"></i>
-                                <div class="dashboard-card-value">Stock Materias Primas</div>
-                                <div class="dashboard-card-title">en Depósitos</div>
+                                <i class="bi bi-box-seam-fill dashboard-card-icon"></i>
+                                <div class="dashboard-card-value"><?php echo number_format($total_stock_materias_primas, 2, ',', '.'); ?> L</div>
+                                <div class="dashboard-card-title">Stock de Materias Primas</div>
                                 <?php if (!empty($stock_materias_primas_depositos)): ?>
                                     <hr class="w-75 my-3">
                                     <ul class="product-stock-list">
@@ -629,9 +640,9 @@ $pdo = null;
                     <div class="col-md-6 col-lg-4 mb-4">
                         <div class="card text-center">
                             <div class="card-body">
-                                <i class="bi bi-flask-fill dashboard-card-icon"></i>
-                                <div class="dashboard-card-value">Stock Lotes Preparados</div>
-                                <div class="dashboard-card-title">para Envasar</div>
+                                <i class="bi bi-box-seam-fill dashboard-card-icon"></i>
+                                <div class="dashboard-card-value"><?php echo number_format($total_stock_lotes_preparados, 2, ',', '.'); ?> L</div>
+                                <div class="dashboard-card-title">Stock de Lotes Preparados</div>
                                 <?php if (!empty($stock_lotes_preparados)): ?>
                                     <hr class="w-75 my-3">
                                     <ul class="product-stock-list">
@@ -650,23 +661,23 @@ $pdo = null;
                         </div>
                     </div>
 
-                    <!-- Capacidad Disponible en Depósitos Vacíos -->
+                    <!-- Capacidad Disponible en DepÃ³sitos VacÃ­os -->
                     <div class="col-md-6 col-lg-4 mb-4">
                         <div class="card text-center">
                             <div class="card-body">
                                 <i class="bi bi-funnel-fill dashboard-card-icon"></i>
                                 <div class="dashboard-card-value"><?php echo number_format($capacidad_depositos_vacios, 2, ',', '.'); ?> L</div>
-                                <div class="dashboard-card-title">Capacidad Disponible en Depósitos Vacíos</div>
+                                <div class="dashboard-card-title">Capacidad Disponible en DepÃ³sitos VacÃ­os</div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Ventas del Día Actual -->
+                    <!-- Ventas del DÃ­a Actual -->
                     <div class="col-md-6 col-lg-4 mb-4">
                         <div class="card text-center">
                             <div class="card-body">
                                 <i class="bi bi-cash-stack dashboard-card-icon"></i>
-                                <div class="dashboard-card-value"><?php echo number_format($ventas_hoy_euros, 2, ',', '.'); ?> €</div>
+                                <div class="dashboard-card-value"><?php echo number_format($ventas_hoy_euros, 2, ',', '.'); ?> â‚¬</div>
                                 <div class="dashboard-card-title">Ventas Hoy (Euros)</div>
                                 <hr class="w-75 my-3">
                                 <div class="dashboard-card-value" style="font-size: 1.8rem;"><?php echo number_format($ventas_hoy_litros, 2, ',', '.'); ?> L</div>
@@ -680,7 +691,7 @@ $pdo = null;
                         <div class="card text-center">
                             <div class="card-body">
                                 <i class="bi bi-graph-up dashboard-card-icon"></i>
-                                <div class="dashboard-card-value"><?php echo number_format($total_ventas_mes_actual, 2, ',', '.'); ?> €</div>
+                                <div class="dashboard-card-value"><?php echo number_format($total_ventas_mes_actual, 2, ',', '.'); ?> â‚¬</div>
                                 <div class="dashboard-card-title">Ventas Mes Actual (Euros)</div>
                                 <hr class="w-75 my-3">
                                 <div class="dashboard-card-value" style="font-size: 1.8rem;"><?php echo number_format($ventas_mes_litros, 2, ',', '.'); ?> L</div>
@@ -703,7 +714,7 @@ $pdo = null;
 
                 <div class="card mt-4">
                     <div class="card-header bg-primary-custom">
-                        Últimas 5 Facturas
+                        Ãšltimas 5 Facturas
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
@@ -745,7 +756,7 @@ $pdo = null;
                                                 <td><?php echo htmlspecialchars($factura['id_factura']); ?></td>
                                                 <td><?php echo htmlspecialchars(date('d/m/Y', strtotime($factura['fecha_factura']))); ?></td>
                                                 <td><?php echo htmlspecialchars($factura['nombre_cliente']); ?></td>
-                                                <td class="text-end"><?php echo number_format($factura['total_factura'], 2, ',', '.'); ?> €</td>
+                                                <td class="text-end"><?php echo number_format($factura['total_factura'], 2, ',', '.'); ?> â‚¬</td>
                                                 <td>
                                                     <span class="badge <?php echo htmlspecialchars($badge_class_pago); ?>"><?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $factura['estado_pago']))); ?></span>
                                                 </td>

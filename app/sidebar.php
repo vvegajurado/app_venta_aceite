@@ -265,6 +265,14 @@ foreach ($menu_items as $id => $menu) {
         display: flex;
         flex-direction: column;
         box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+        transition: width 0.3s ease;
+    }
+
+    .wrapper.sidebar-collapsed .sidebar {
+        width: 0;
+        padding-left: 0;
+        padding-right: 0;
+        overflow: hidden;
     }
 
     .sidebar-header {
