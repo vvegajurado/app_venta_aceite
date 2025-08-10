@@ -54,6 +54,11 @@ try {
         ORDER BY mp.nombre_materia_prima ASC
     ");
     $stock_materias_primas_depositos = $stmt_mp_depositos->fetchAll(PDO::FETCH_ASSOC);
+    // Calcular el total de materias primas
+    $total_stock_materias_primas = 0;
+    foreach ($stock_materias_primas_depositos as $item) {
+        $total_stock_materias_primas += $item['total_litros_mp'];
+    }
 
     // 3. Obtener el stock actual de lotes preparados (depósitos de mezcla con stock)
     $stmt_lotes_preparados = $pdo->query("
@@ -64,6 +69,11 @@ try {
         ORDER BY le.fecha_creacion DESC
     ");
     $stock_lotes_preparados = $stmt_lotes_preparados->fetchAll(PDO::FETCH_ASSOC);
+    // Calcular el total de lotes preparados
+    $total_stock_lotes_preparados = 0;
+    foreach ($stock_lotes_preparados as $item) {
+        $total_stock_lotes_preparados += $item['litros_lote_preparado'];
+    }
 
     // 4. Obtener el total de capacidad disponible en depósitos vacíos
     $stmt_cap_vacios = $pdo->query("SELECT SUM(capacidad) AS total_capacidad_vacia FROM depositos WHERE stock_actual = 0");
@@ -604,9 +614,9 @@ $pdo = null;
                     <div class="col-md-6 col-lg-4 mb-4">
                         <div class="card text-center">
                             <div class="card-body">
-                                <i class="bi bi-barrel-fill dashboard-card-icon"></i>
-                                <div class="dashboard-card-value">Stock Materias Primas</div>
-                                <div class="dashboard-card-title">en Depósitos</div>
+                                <i class="bi bi-box-seam-fill dashboard-card-icon"></i>
+                                <div class="dashboard-card-value"><?php echo number_format($total_stock_materias_primas, 2, ',', '.'); ?> L</div>
+                                <div class="dashboard-card-title">Stock de Materias Primas</div>
                                 <?php if (!empty($stock_materias_primas_depositos)): ?>
                                     <hr class="w-75 my-3">
                                     <ul class="product-stock-list">
@@ -629,9 +639,9 @@ $pdo = null;
                     <div class="col-md-6 col-lg-4 mb-4">
                         <div class="card text-center">
                             <div class="card-body">
-                                <i class="bi bi-flask-fill dashboard-card-icon"></i>
-                                <div class="dashboard-card-value">Stock Lotes Preparados</div>
-                                <div class="dashboard-card-title">para Envasar</div>
+                                <i class="bi bi-box-seam-fill dashboard-card-icon"></i>
+                                <div class="dashboard-card-value"><?php echo number_format($total_stock_lotes_preparados, 2, ',', '.'); ?> L</div>
+                                <div class="dashboard-card-title">Stock de Lotes Preparados</div>
                                 <?php if (!empty($stock_lotes_preparados)): ?>
                                     <hr class="w-75 my-3">
                                     <ul class="product-stock-list">
